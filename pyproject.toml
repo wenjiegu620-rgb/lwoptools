@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "sample-deliver"
+version = "0.1.0"
+description = "Lightwheel platform data download & delivery report tool"
+requires-python = ">=3.9"
+dependencies = [
+    "requests",
+    "certifi",
+    "loguru",
+    "rich",
+    "openpyxl",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sample_deliver*"]
