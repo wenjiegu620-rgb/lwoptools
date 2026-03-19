@@ -8,4 +8,5 @@ venv/
 downloads/
 *.log
 config.json
+**/snapshots/
 .DS_Store

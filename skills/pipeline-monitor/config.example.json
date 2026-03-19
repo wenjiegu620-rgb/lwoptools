@@ -1,0 +1,27 @@
+{
+  "alert": {
+    "observe_threshold": 10,
+    "observe_rate": 0.15,
+    "warn_threshold": 30,
+    "warn_growth": 20,
+    "critical_threshold": 50,
+    "critical_consecutive": 2,
+    "silence_hours": 2
+  },
+  "feishu_group_id": "oc_xxx",
+  "node_owners": {
+    "video_preprocess": "ou_xxx",
+    "algo_auto_checker": "ou_xxx",
+    "data_cut": "ou_xxx",
+    "quality_check": "ou_xxx",
+    "annotation": "ou_xxx"
+  },
+  "monitored_projects": ["all"],
+  "clickhouse": {
+    "host": "YOUR_HOST",
+    "port": 9000,
+    "database": "asset",
+    "user": "YOUR_USER",
+    "password": "YOUR_PASSWORD"
+  }
+}
