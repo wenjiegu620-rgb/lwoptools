@@ -1,0 +1,10 @@
+{
+  "token": "your-auth-token",
+  "clickhouse": {
+    "host": "YOUR_CLICKHOUSE_HOST",
+    "port": 9000,
+    "database": "asset",
+    "user": "YOUR_CLICKHOUSE_USER",
+    "password": "YOUR_CLICKHOUSE_PASSWORD"
+  }
+}

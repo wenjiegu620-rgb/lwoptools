@@ -13,7 +13,7 @@ tools: Bash
 
 - **Clickhouse**: `10.23.206.206:9000`，database=`asset`（需公司内网/VPN）
 - **数据平台 API**: `https://assetserver.lightwheel.net/api/asset/v1`（需公司内网）
-- **Token**: 存于 `~/.claude/skills/daily-report/config.json`，约 7 天过期
+- **Token / Clickhouse 凭据**: 存于 `~/.claude/skills/daily-report/config.json`
 
 ## 日报结构
 
@@ -108,7 +108,16 @@ pip3 install clickhouse-driver requests
 ```bash
 mkdir -p ~/.claude/skills/daily-report
 cat > ~/.claude/skills/daily-report/config.json << 'EOF'
-{"token": "<从浏览器 localStorage.getItem('authToken') 获取>"}
+{
+  "token": "<从浏览器 localStorage.getItem('authToken') 获取>",
+  "clickhouse": {
+    "host": "<Clickhouse host>",
+    "port": 9000,
+    "database": "asset",
+    "user": "<Clickhouse user>",
+    "password": "<Clickhouse password>"
+  }
+}
 EOF
 ```
 
