@@ -55,9 +55,10 @@ def query_clickhouse(config):
     monitored = config.get("monitored_projects", ["all"])
     if monitored == ["all"] or "all" in monitored:
         project_filter = ""
+        params = {}
     else:
-        keywords = " OR ".join([f"p.name LIKE '%{kw}%'" for kw in monitored])
-        project_filter = f"AND ({keywords})"
+        project_filter = "AND multiSearchAnyCaseInsensitive(p.name, %(keywords)s)"
+        params = {"keywords": monitored}
 
     sql = f"""
     SELECT
@@ -80,7 +81,7 @@ def query_clickhouse(config):
     ORDER BY p.name, failed_cnt DESC
     """
 
-    rows = client.execute(sql)
+    rows = client.execute(sql, params)
     # rows: [(project_name, node_name, failed_cnt, pending_cnt), ...]
     result = {}
     for project_name, node_name, failed_cnt, pending_cnt in rows:
@@ -129,7 +130,10 @@ def query_1h_failure_rate(config, project_name, node_name):
 def is_in_silence(alerts_sent, key, silence_hours):
     if key not in alerts_sent:
         return False
-    last_alert = datetime.fromisoformat(alerts_sent[key]["last_alert_time"])
+    last_alert_time = alerts_sent[key].get("last_alert_time")
+    if not last_alert_time:
+        return False
+    last_alert = datetime.fromisoformat(last_alert_time)
     return datetime.now() - last_alert < timedelta(hours=silence_hours)
 
 

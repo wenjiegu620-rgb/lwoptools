@@ -19,7 +19,7 @@
 ### 安装
 
 ```bash
-pip install git+https://github.com/wenjiegu620-rgb/sample-deliver.git#subdirectory=scripts
+pip install git+https://github.com/wenjiegu620-rgb/lwoptools.git#subdirectory=scripts
 ```
 
 或本地安装：
