@@ -7,77 +7,141 @@ description: >
 tools: Bash
 ---
 
-# Human Case 批量复制工具
+# Human Case 智能复制 Agent
 
 ## 脚本位置
 
-`~/.claude/skills/case-copy/scripts/tool.py`
+- `~/.claude/skills/case-copy/scripts/query.py`  — 查询/筛选
+- `~/.claude/skills/case-copy/scripts/copy.py`   — 执行复制
 
-## 功能
+## 完整工作流
 
-从源项目按质检节点（`human_case_inspect`）状态筛选 human case，批量复制到目标项目，自动重置为初始状态，并输出 Excel 报告标注每条 case 的质检状态和复制结果。
+### Step 1：收集需求（对话）
 
-- 质检**通过**：`nodeStatus=3`，取最多 N 条
-- 质检**不通过**：`nodeStatus=4`，取最多 N 条
-- 一次 API 调用批量复制
-- 若接口未返回逐条结果，报告会明确标记为“已提交复制，待人工确认”
+向用户确认以下信息（未提供的逐一询问）：
 
-## 工作流
+| 参数 | 说明 | 是否必须 |
+|------|------|---------|
+| 源项目 | UUID 或名称 | ✅ |
+| 目标项目 | UUID 或名称 | ✅ |
+| 用户名 | Asset 平台用户名 | ✅ |
+| Bearer token | 登录 token（说明不会存储） | ✅ |
+| 环境 | prod / dev | 默认 prod |
+| 状态 | 质检通过 / 质检不通过 / 两者都要 | ✅ |
+| 数量 | 每种状态各几条 | 默认 20 |
+| 场景要求 | 自然语言描述，如"家居"、"工厂" | 可选 |
+| task 去重 | 每个 task 只取一条 | 可选 |
+| 是否显示时长 | 需要连 MySQL | 可选 |
 
-### Step 1：告知用户
-
-说"稍等，帮你运行复制工具"，然后执行脚本。
-
-### Step 2：运行脚本
-
+**项目 UUID 解析**：若用户提供名称，调用：
 ```bash
-python3 ~/.claude/skills/case-copy/scripts/tool.py
+python3 -c "
+import requests, json
+token='<token>'; username='<username>'; name='<项目名>'
+resp = requests.post(
+    'https://assetserver.lightwheel.net/api/asset/v1/project/list',
+    headers={'Authorization': f'Bearer {token}', 'Username': username, 'Content-Type': 'application/json'},
+    json={'page':1,'pageSize':20,'name':name}
+)
+for p in (resp.json().get('data',{}).get('list') or resp.json().get('data') or []):
+    print(p.get('name'), '->', p.get('uuid') or p.get('id'))
+"
 ```
 
-脚本为**完全交互式**，会依次提示输入：
-1. 用户名
-2. Bearer token（不回显）
-3. 源项目 UUID
-4. 目标项目 UUID
-5. 每种状态复制条数（默认 20）
-6. 输出 Excel 文件名（默认 case_copy_report.xlsx）
-7. 环境 prod/dev（默认 prod）
+---
 
-### Step 3：返回结果
+### Step 2：探索项目场景（若用户有场景要求）
 
-脚本运行结束后，告知用户：
-- 已确认复制成功多少条
-- 若接口未返回逐条结果，提示有多少条需要人工确认
-- Excel 报告保存路径
+```bash
+python3 ~/.claude/skills/case-copy/scripts/query.py \
+  --token "<token>" --username "<username>" \
+  --project-uuid "<src_uuid>" \
+  list-scenes
+```
+
+**Claude 根据用户的自然语言描述自行匹配 scene_key**（`env_type_name` 原始值，如 `home`、`office`）。
+不依赖硬编码映射，新场景自动兼容。若匹配不确定，列出候选项让用户确认。
+
+---
+
+### Step 3：查询候选 case
+
+```bash
+python3 ~/.claude/skills/case-copy/scripts/query.py \
+  --token "<token>" --username "<username>" \
+  --project-uuid "<src_uuid>" \
+  query \
+  --scene-key <scene_key> \
+  --status <3_or_4> \
+  --count <n> \
+  [--task-dedup] \
+  [--with-duration]
+```
+
+"两者都要"时对 status=3 和 status=4 分别查询一次。
+
+---
+
+### Step 4：展示确认清单
+
+将结果格式化展示：
+
+```
+找到以下符合条件的 case，请确认是否复制：
+
+| # | Case 名称 | Task | 场景 | 质检状态 | 时长 |
+|---|-----------|------|------|---------|------|
+| 1 | grape_xxx_001 | 接水水杯 | home | 质检通过 | 2m34s |
+...
+
+共 20 条（总时长：48m12s）
+```
+
+**若实际结果不足用户要求的数量**，直接告知：
+
+> 该条件下只找到 X 条（少于要求的 N 条），是否继续复制这 X 条？
+
+- 用户选**是** → 继续 Step 5
+- 用户选**否** → 询问是否调整条件（场景/状态/数量），重新执行 Step 3
+
+---
+
+### Step 5：执行复制
+
+用户确认后：
+
+```bash
+python3 ~/.claude/skills/case-copy/scripts/copy.py \
+  --token "<token>" --username "<username>" \
+  --src "<src_uuid>" \
+  --dst "<dst_uuid>" \
+  --ids "uuid1,uuid2,..." \
+  --env prod
+```
+
+---
+
+### Step 6：报告结果
+
+告知用户成功复制了多少条，从哪个项目复制到哪个项目。
+
+---
 
 ## 关键 API
 
 | 接口 | 说明 |
 |------|------|
-| `POST /api/asset/v2/human-case/list` | 按节点状态筛选 case |
-| `POST /api/asset/v2/human-case/copy-human-case` | 批量复制到目标项目 |
-
-**复制请求体**：
-```json
-{
-  "current_project_uuid": "<源项目UUID>",
-  "target_project_uuid":  "<目标项目UUID>",
-  "human_case_ids":       ["uuid1", "uuid2", ...]
-}
-```
+| `POST /api/asset/v2/human-case/list` | 按 `nodeStatus` 筛选（3=通过，4=不通过） |
+| `POST /api/asset/v2/human-case/copy-human-case` | 批量复制 |
+| `POST /api/asset/v1/project/list` | 按名称查项目 UUID |
 
 ## 错误处理
 
 | 错误 | 处理 |
 |------|------|
-| token 无效（401/403） | 提示用户重新从平台获取 token |
-| 源项目无数据 | 提示该状态下无 case，检查筛选条件 |
-| 目标项目不存在 | 提示检查目标项目 UUID |
-| 环境输入错误 | 提示只能输入 `prod` 或 `dev` |
-| 依赖缺失 | `pip install requests pandas openpyxl loguru` |
-
-## 常见修改场景
-
-- **修改筛选节点**：改脚本中 `NODE_NAME` 常量（当前为 `human_case_inspect`）
-- **修改状态码**：`STATUS_SUCCESS=3`，`STATUS_FAIL=4`
-- **修改 Excel 字段**：改 `build_report()` 函数中的 `rows` 构造
+| token 无效（401/403） | 提示重新获取 token |
+| 符合条件的 case 为 0 条 | 告知用户，询问是否调整条件 |
+| 符合条件的 case 不足 N 条 | 告知实际数量，询问是否继续 |
+| 目标项目不存在 | 提示检查 UUID |
+| MySQL 连接失败 | 跳过时长，仍正常执行复制 |
+| 依赖缺失 | `pip install requests pymysql` |
