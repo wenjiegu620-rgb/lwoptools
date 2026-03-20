@@ -22,6 +22,7 @@ case_copy/query.py
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -48,11 +49,12 @@ def api_base(env: str) -> str:
 
 
 def fetch_cases(token: str, username: str, project_uuid: str,
-                node_status: int, page_size: int, env: str) -> list[dict]:
+                node_status: int, page_size: int, env: str,
+                node_name: str = "human_case_inspect") -> list[dict]:
     body = {
         "page": 1,
         "pageSize": page_size,
-        "equal": {"nodeStatus": node_status},
+        "equal": {"nodeName": node_name, "nodeStatus": node_status},
         "order": [{"updatedAt": 2}],
         "projectUuid": project_uuid,
     }
@@ -102,11 +104,20 @@ def fetch_durations(case_ids: list[str]) -> dict[str, float]:
         print("[warn] pymysql 未安装，跳过时长查询。pip install pymysql", file=sys.stderr)
         return {}
 
+    # 从环境变量读取凭据，若未设置则跳过
+    db_host = os.environ.get("CASE_COPY_DB_HOST", "")
+    db_user = os.environ.get("CASE_COPY_DB_USER", "")
+    db_pass = os.environ.get("CASE_COPY_DB_PASS", "")
+    db_port = int(os.environ.get("CASE_COPY_DB_PORT", "3306"))
+    if not db_host or not db_user or not db_pass:
+        print("[warn] 未设置 CASE_COPY_DB_HOST/USER/PASS 环境变量，跳过时长查询。", file=sys.stderr)
+        return {}
+
     result: dict[str, float] = {}
     try:
         conn = pymysql.connect(
-            host="10.23.131.202", port=3306,
-            user="wenjie.gu", password="Lightwheel*2026",
+            host=db_host, port=db_port,
+            user=db_user, password=db_pass,
             database="asset", charset="utf8mb4", connect_timeout=10,
         )
         for i in range(0, len(case_ids), 200):
@@ -151,7 +162,7 @@ def cmd_list_scenes(args):
     cases = []
     for status in [3, 4]:
         cases += fetch_cases(args.token, args.username, args.project_uuid,
-                             status, 200, args.env)
+                             status, 200, args.env, args.node_name)
 
     scene_counter: Counter = Counter()
     for c in cases:
@@ -173,7 +184,7 @@ def cmd_query(args):
     """筛选模式：按 scene_key/status/count/task去重 返回 case 清单。"""
     fetch_size = max(args.count * 5, 200)
     raw = fetch_cases(args.token, args.username, args.project_uuid,
-                      args.status, fetch_size, args.env)
+                      args.status, fetch_size, args.env, args.node_name)
 
     # 场景过滤（直接比对 env_type_name 原始值）
     filtered = []
@@ -233,10 +244,13 @@ def main():
     sub = parser.add_subparsers(dest="cmd")
 
     # list-scenes 子命令
-    sub.add_parser("list-scenes", help="列出项目内所有场景类型及条数")
+    ls = sub.add_parser("list-scenes", help="列出项目内所有场景类型及条数")
+    ls.add_argument("--node-name", default="human_case_inspect")
 
     # query 子命令
     q = sub.add_parser("query", help="筛选 case")
+    q.add_argument("--node-name", default="human_case_inspect",
+                   help="质检节点名称，默认 human_case_inspect")
     q.add_argument("--scene-key", default="",
                    help="env_type_name 原始值（如 home），空=不过滤")
     q.add_argument("--status", type=int, default=3, choices=[3, 4])
