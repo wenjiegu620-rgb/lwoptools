@@ -3,7 +3,7 @@
 机器人数据运营工具集，当前包含四个部分：
 
 - `scripts/sample_deliver`：从 Lightwheel 平台下载打包完成的数据，并生成 Excel 交付报告
-- `skills/case-copy`：按质检状态批量复制 human case 到目标项目，并生成复制报告
+- `skills/case-copy`：智能复制 human case，支持自然语言描述场景/状态/数量/task去重，Agent 确认后执行复制
 - `skills/pipeline-monitor`：工作流链路监控 skill，支持定时监控和交互查询
 - `skills/daily-report`：运营日报 skill，从 Clickhouse 和数据平台 API 拉取数据并生成 Markdown 日报
 
@@ -23,6 +23,8 @@
     ├── case-copy/
     │   ├── SKILL.md
     │   └── scripts/
+    │       ├── copy.py
+    │       ├── query.py
     │       ├── test_tool.py
     │       └── tool.py
     ├── daily-report/
@@ -149,52 +151,56 @@ downloads/
 
 ### 功能
 
-`case-copy` 用于从源项目筛出 `human_case_inspect` 节点下指定质检状态的 human case，并批量复制到目标项目。脚本会分别查询：
+`case-copy` 是一个 Agent 驱动的 human case 跨项目复制工具。用自然语言描述需求，Agent 自动查询、筛选、确认后执行复制。
 
-- `nodeStatus=3`：质检通过
-- `nodeStatus=4`：质检不通过
+**支持的筛选条件：**
 
-复制完成后会生成 Excel 报告，包含每条 case 的：
+- 场景（家居、办公室、工厂等，自动从项目数据中发现，无需硬编码）
+- 质检状态（通过 `nodeStatus=3` / 不通过 `nodeStatus=4`）
+- 数量（每种状态各取 N 条）
+- task 去重（每个 task 只保留一条）
+- 时长（可选，需配置 MySQL 环境变量）
 
-- case 基本信息
-- 原始质检状态
-- 复制结果状态
-- 执行时间
+**典型交互流程：**
 
-当复制接口未返回逐条成功/失败明细时，报告会明确标记为“已提交复制，接口未返回逐条结果”，避免把请求成功误写成复制成功。
+1. 用户描述需求（”复制家居场景质检通过的数据 20 条到 DM_sample 项目”）
+2. Agent 探索项目内的场景类型并匹配
+3. Agent 展示候选 case 清单，若数量不足会告知并询问是否继续
+4. 用户确认后执行复制
+
+### 脚本说明
+
+| 脚本 | 用途 |
+|------|------|
+| `query.py` | 探索场景类型 / 按条件筛选 case，输出 JSON |
+| `copy.py` | 将指定 case ID 批量复制到目标项目 |
+| `tool.py` | 独立交互式脚本，可不依赖 Agent 直接运行 |
 
 ### 依赖
 
 ```bash
-pip3 install requests pandas openpyxl loguru
+pip3 install requests pandas openpyxl loguru pymysql
 ```
 
-### 使用
+### 直接使用（无 Agent）
 
 ```bash
 python3 skills/case-copy/scripts/tool.py
 ```
 
-脚本会依次提示输入：
+脚本交互式提示输入用户名、token、源/目标项目、状态、数量等，完成后生成 Excel 报告。
 
-1. 用户名
-2. Bearer token
-3. 源项目 UUID
-4. 目标项目 UUID
-5. 每种状态复制条数
-6. 输出 Excel 文件名
-7. 环境 `prod` / `dev`
+### 时长功能配置
 
-环境输入支持大小写，非法值会直接给出明确错误提示。
+时长查询需要连接内网 MySQL，通过环境变量配置：
 
-### 输出
+```bash
+export CASE_COPY_DB_HOST=10.23.131.202
+export CASE_COPY_DB_USER=your_user
+export CASE_COPY_DB_PASS=your_password
+```
 
-脚本会输出：
-
-- 已确认复制成功的数量
-- 失败或跳过的数量
-- 待人工确认的数量
-- Excel 报告路径
+未设置时自动跳过时长查询，不影响复制功能。
 
 ### 测试
 
@@ -202,7 +208,7 @@ python3 skills/case-copy/scripts/tool.py
 python3 -m unittest skills/case-copy/scripts/test_tool.py
 ```
 
-覆盖点包括：
+覆盖点：
 
 - 环境参数校验与大小写兼容
 - 复制接口返回部分成功/失败时的汇总逻辑
