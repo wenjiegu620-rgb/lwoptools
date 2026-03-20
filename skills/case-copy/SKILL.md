@@ -15,11 +15,12 @@ tools: Bash
 
 ## 功能
 
-从源项目按质检节点（`human_case_inspect`）状态筛选 human case，批量复制到目标项目，自动重置为初始状态，并输出 Excel 报告标注每条 case 的质检状态。
+从源项目按质检节点（`human_case_inspect`）状态筛选 human case，批量复制到目标项目，自动重置为初始状态，并输出 Excel 报告标注每条 case 的质检状态和复制结果。
 
 - 质检**通过**：`nodeStatus=3`，取最多 N 条
 - 质检**不通过**：`nodeStatus=4`，取最多 N 条
 - 一次 API 调用批量复制
+- 若接口未返回逐条结果，报告会明确标记为“已提交复制，待人工确认”
 
 ## 工作流
 
@@ -45,7 +46,8 @@ python3 ~/.claude/skills/case-copy/scripts/tool.py
 ### Step 3：返回结果
 
 脚本运行结束后，告知用户：
-- 成功复制了多少条
+- 已确认复制成功多少条
+- 若接口未返回逐条结果，提示有多少条需要人工确认
 - Excel 报告保存路径
 
 ## 关键 API
@@ -71,6 +73,7 @@ python3 ~/.claude/skills/case-copy/scripts/tool.py
 | token 无效（401/403） | 提示用户重新从平台获取 token |
 | 源项目无数据 | 提示该状态下无 case，检查筛选条件 |
 | 目标项目不存在 | 提示检查目标项目 UUID |
+| 环境输入错误 | 提示只能输入 `prod` 或 `dev` |
 | 依赖缺失 | `pip install requests pandas openpyxl loguru` |
 
 ## 常见修改场景

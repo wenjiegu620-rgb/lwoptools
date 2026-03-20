@@ -1,8 +1,9 @@
 # openclaw-skills
 
-机器人数据运营工具集，当前包含三个部分：
+机器人数据运营工具集，当前包含四个部分：
 
 - `scripts/sample_deliver`：从 Lightwheel 平台下载打包完成的数据，并生成 Excel 交付报告
+- `skills/case-copy`：按质检状态批量复制 human case 到目标项目，并生成复制报告
 - `skills/pipeline-monitor`：工作流链路监控 skill，支持定时监控和交互查询
 - `skills/daily-report`：运营日报 skill，从 Clickhouse 和数据平台 API 拉取数据并生成 Markdown 日报
 
@@ -19,6 +20,11 @@
 │       ├── report.py
 │       └── tool.py
 └── skills/
+    ├── case-copy/
+    │   ├── SKILL.md
+    │   └── scripts/
+    │       ├── test_tool.py
+    │       └── tool.py
     ├── daily-report/
     │   ├── SKILL.md
     │   └── scripts/
@@ -139,6 +145,70 @@ downloads/
 - `总览`：项目 ID、下载时间、数量统计、Task 列表、输出目录
 - `文件清单`：每个文件对应的 `task_name`、`episode_uuid`、相对文件路径
 
+## skills/case-copy
+
+### 功能
+
+`case-copy` 用于从源项目筛出 `human_case_inspect` 节点下指定质检状态的 human case，并批量复制到目标项目。脚本会分别查询：
+
+- `nodeStatus=3`：质检通过
+- `nodeStatus=4`：质检不通过
+
+复制完成后会生成 Excel 报告，包含每条 case 的：
+
+- case 基本信息
+- 原始质检状态
+- 复制结果状态
+- 执行时间
+
+当复制接口未返回逐条成功/失败明细时，报告会明确标记为“已提交复制，接口未返回逐条结果”，避免把请求成功误写成复制成功。
+
+### 依赖
+
+```bash
+pip3 install requests pandas openpyxl loguru
+```
+
+### 使用
+
+```bash
+python3 skills/case-copy/scripts/tool.py
+```
+
+脚本会依次提示输入：
+
+1. 用户名
+2. Bearer token
+3. 源项目 UUID
+4. 目标项目 UUID
+5. 每种状态复制条数
+6. 输出 Excel 文件名
+7. 环境 `prod` / `dev`
+
+环境输入支持大小写，非法值会直接给出明确错误提示。
+
+### 输出
+
+脚本会输出：
+
+- 已确认复制成功的数量
+- 失败或跳过的数量
+- 待人工确认的数量
+- Excel 报告路径
+
+### 测试
+
+```bash
+python3 -m unittest skills/case-copy/scripts/test_tool.py
+```
+
+覆盖点包括：
+
+- 环境参数校验与大小写兼容
+- 复制接口返回部分成功/失败时的汇总逻辑
+- 接口未返回逐条结果时的保守标记逻辑
+- Excel 报告行的 `copy_status` 标记
+
 ## skills/pipeline-monitor
 
 ### 功能
@@ -229,14 +299,16 @@ python3 ~/.openclaw/skills/pipeline-monitor/scripts/query.py --project DM_sample
 
 ### 测试
 
-仓库当前包含 `pipeline-monitor` 的单元测试：
+仓库当前包含 `case-copy` 和 `pipeline-monitor` 的单元测试：
 
 ```bash
+python3 -m unittest skills/case-copy/scripts/test_tool.py
 python3 -m unittest skills/pipeline-monitor/scripts/test_monitor.py
 ```
 
 覆盖点包括：
 
+- `case-copy` 的环境参数校验与复制结果汇总
 - `is_in_silence()` 的静默期边界
 - `check_alerts()` 的连续增长与静默逻辑
 - `query.py` / `monitor.py` 的 SQL 参数化
