@@ -16,17 +16,43 @@ tools: Bash
 
 ---
 
+## 时长计算逻辑
+
+- **打包成功**：取 `delivery_video_seconds`
+- **其他所有指标**（质检成功、标注中、标注完成、待质检等）：取 `video_seconds`，不做任何修正
+
+---
+
 ## 工作流一：查询交付进度
 
-### Step 1：运行查询
+### Step 1：后台运行查询（脚本耗时较长，必须后台执行）
+
+查询脚本单次全量查询可能耗时 5~10 分钟，**必须**将输出重定向到文件后台运行，不要直接阻塞等待。
 
 ```bash
 # 查询单个项目
-python3 ~/.openclaw/skills/delivery-tracker/scripts/query.py --project <项目名>
+OUT=/tmp/delivery_out.txt
+python3 ~/.openclaw/skills/delivery-tracker/scripts/query.py --project <项目名> \
+  > "$OUT" 2>/tmp/delivery_err.txt &
+PID=$!
+echo "后台运行中，PID=$PID，输出 → $OUT"
 
-# 查询所有活跃项目
-python3 ~/.openclaw/skills/delivery-tracker/scripts/query.py --all
+# 等待完成后读取
+wait $PID && cat "$OUT"
 ```
+
+```bash
+# 查询所有活跃项目
+OUT=/tmp/delivery_out.txt
+python3 ~/.openclaw/skills/delivery-tracker/scripts/query.py --all \
+  > "$OUT" 2>/tmp/delivery_err.txt &
+PID=$!
+echo "后台运行中，PID=$PID，输出 → $OUT"
+
+wait $PID && cat "$OUT"
+```
+
+执行 Bash 工具时**设置 timeout=600000**（10分钟），不要使用默认超时。
 
 ### Step 2：读取并展示报告
 
@@ -143,3 +169,4 @@ python3 ~/.openclaw/skills/delivery-tracker/scripts/manage.py list
 | 未识别环境出现 | 走工作流三，不自动归类 |
 | JSON 格式错误 | 提示检查 projects.json 或 --scenes 参数格式 |
 | 密码未设置 | 提示设置 `DELIVERY_DB_PASSWORD` 或 `ORANGE_WRIST_DB_PASSWORD` 环境变量 |
+| 脚本被杀死/无输出 | 检查 /tmp/delivery_err.txt，确认是否 VPN 断开或磁盘满 |

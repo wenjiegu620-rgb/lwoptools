@@ -38,7 +38,6 @@ DB_CONFIG = {
     "charset":         "utf8mb4",
     "cursorclass":     SSDictCursor,
     "connect_timeout": 60,
-    "read_timeout":    300,
 }
 
 SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -74,10 +73,8 @@ def resolve_scene(env_key: str, scene_mapping: dict):
 
 # ── SQL 工具 ──────────────────────────────────────────────────────────────────
 
-HOURS_EXPR = (
-    "SUM(COALESCE(hc.delivery_video_seconds,"
-    " GREATEST(IFNULL(hc.video_seconds, 0) - 5, 0))) / 3600.0"
-)
+HOURS_EXPR         = "SUM(IFNULL(hc.video_seconds, 0)) / 3600.0"
+HOURS_EXPR_PACKED  = "SUM(IFNULL(hc.delivery_video_seconds, 0)) / 3600.0"
 ENV_FIELDS = """
     JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.env_type_name'))   AS env_type_name,
     JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.environment_num')) AS environment_num,
@@ -130,7 +127,7 @@ def query_packaged(cur, project_ids):
     ph = _ph(project_ids)
     cur.execute(f"""
         SELECT hc.project_id, {ENV_FIELDS},
-               COUNT(*) AS cnt, {HOURS_EXPR} AS hours
+               COUNT(*) AS cnt, {HOURS_EXPR_PACKED} AS hours
         FROM human_cases hc
         WHERE hc.project_id IN ({ph})
           AND hc.id IN (
