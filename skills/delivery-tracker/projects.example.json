@@ -1,0 +1,40 @@
+{
+  "scene_mapping": {
+    "home": "家居",
+    "office": "办公室",
+    "outdoor": "户外",
+    "gym": "体育馆",
+    "auto_repair_shop": "汽修厂",
+    "coffee_shop": "咖啡厅",
+    "supermarket": "超市"
+  },
+  "projects": [
+    {
+      "name": "example_2000h",
+      "display_name": "Example 2000小时",
+      "delivery_date": "2026-04-30",
+      "base_total_hours": 2000,
+      "scenes": [
+        {"name": "家居", "duration_ratio_min": 0.80, "duration_ratio_max": 0.85, "min_task_count": 300},
+        {"name": "办公室", "duration_ratio_min": 0.05, "duration_ratio_max": 0.10, "min_task_count": 50}
+      ],
+      "query_projects": [
+        {"id": "your-project-uuid-here", "name": "your_project_name"}
+      ],
+      "status": "active"
+    },
+    {
+      "name": "example_fixed",
+      "display_name": "Example 固定目标",
+      "delivery_date": "2026-05-01",
+      "scenes": [
+        {"name": "家居", "target_hours": 100},
+        {"name": "办公室", "target_hours": 60}
+      ],
+      "query_projects": [
+        {"id": "your-project-uuid-here", "name": "your_project_name"}
+      ],
+      "status": "active"
+    }
+  ]
+}
