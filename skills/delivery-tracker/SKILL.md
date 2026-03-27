@@ -9,17 +9,41 @@ tools: Bash
 
 # 交付进度追踪 Agent
 
+## 强约束
+
+- 所有**查询类请求**（查看进度、看交付情况等），最终输出必须包含**渲染后的 PNG 报告图片**。
+- 纯文本报告（Markdown/表格）仅作为补充说明，不能替代图片结果。
+- 默认调用封装脚本：`scripts/report.sh <project_name>`，其内部固定流程为：`query.py → render.py → 输出 PNG 路径`。
+- 所有 delivery-tracker 报告均需：
+  - 仅统计交付项目配置中的环境；
+  - 如关联采集项目中存在其他环境，需在进度统计前加一行说明：`（关联采集项目中还存在未配置环境：环境Axh，环境Byh...，未纳入统计）`。
+  - 在图片中包含**第三部分：分析建议/风险分析**，由模型根据当前数据生成 2~4 条要点，合并到 Markdown 后再整体渲染为 PNG。
+
+**没有配置目标的环境不纳入数据报告。**
+
+- 没有配置目标的环境，不纳入"一、交付进度统计"表格
+- 没有配置目标的环境，不纳入"二、质检统计"表格
+- 没有环境分布要求的项目，所有环境都纳入统计
+- 表格标题直接显示"一、交付进度统计"和"二、质检统计"，不标注"有目标的环境"
+
 ## 脚本位置
 
 - `~/.openclaw/skills/delivery-tracker/scripts/query.py`   — 查询并输出报告
 - `~/.openclaw/skills/delivery-tracker/scripts/manage.py`  — 项目配置管理
 
+## 内网与数据库要求（必须遵守）
+
+- 该 skill 默认使用最新 RDS：`rm-uf69cxp907m8j6k4a.mysql.rds.aliyuncs.com:3306`。
+- 查询和测试优先在内网机器执行：`ssh root@139.224.244.183`。
+- 数据库连接参数优先使用环境变量覆盖：`DELIVERY_DB_HOST` / `DELIVERY_DB_PORT` / `DELIVERY_DB_USER` / `DELIVERY_DB_PASSWORD` / `DELIVERY_DB_NAME`。
+- 需要保证远程机上的 skill 目录与本地一致（建议同步到：`/root/.agents/skills/delivery-tracker`）。
+
 ---
 
 ## 时长计算逻辑
 
-- **打包成功**：取 `delivery_video_seconds`
-- **其他所有指标**（质检成功、标注中、标注完成、待质检等）：取 `video_seconds`，不做任何修正
+- **打包成功**：取 `delivery_video_seconds`（优先），回退 `video_seconds`
+- **其他所有指标**（采集质检成功、标注中、标注完成、待质检等）：直接取 `video_seconds`，不做任何修正
 
 ---
 
@@ -57,10 +81,16 @@ wait $PID && cat "$OUT"
 ### Step 2：读取并展示报告
 
 脚本 stdout 输出两块 Markdown：
-- **一、交付进度统计** — 8列指标表（质检成功、语义标注中、手势标注中、标注中、标注完成、打包成功、目标、进度）
-- **二、质检状态** — 按环境的待质检时长、质检通过数、质检失败数、通过率
+- **一、交付进度统计** — 8列指标表（采集质检成功、语义标注中、手势标注中、标注中、标注完成、打包成功、目标、进度）
+- **二、质检统计** — 按环境的待质检时长、质检通过数、质检失败数、通过率
 
 如有未识别环境，末尾会有 `⚠️ 待确认环境` 区块（见下方"工作流三"处理）。
+
+**展示规则（仅适用于有环境分布要求的项目）：**
+- 没有配置目标的环境，不纳入"一、交付进度统计"表格
+- 没有配置目标的环境，不纳入"二、质检统计"表格
+- 没有环境分布要求的项目，所有环境都纳入统计
+- 表格标题不标注"有目标的环境"，直接显示"一、交付进度统计"和"二、质检统计"
 
 ### Step 3：生成建议（Claude 生成，不在脚本里）
 
@@ -76,6 +106,18 @@ wait $PID && cat "$OUT"
 > 1. ⚠️ 家居进度 62%，距交付还有 3 天，缺口约 152h，建议立即评估打包产能。
 > 2. 办公室当前占比 12%，超出目标上限 10%，如继续采集需关注配比。
 > 3. PICO+Tracker_户外 质检通过率仅 12.4%，远低于整体 76.7%，建议排查质检失败原因。
+
+### Step 4：渲染为图片
+
+将完整 Markdown 报告（统计表 + 质检统计 + 建议）通过 render.py 渲染成 PNG：
+
+```bash
+python3 ~/.openclaw/skills/delivery-tracker/scripts/render.py --output /tmp/delivery_report.png << 'MDEOF'
+（此处粘贴完整 Markdown 报告内容）
+MDEOF
+```
+
+脚本 stdout 输出图片路径，将该路径作为最终结果返回。
 
 ---
 
@@ -164,9 +206,9 @@ python3 ~/.openclaw/skills/delivery-tracker/scripts/manage.py list
 
 | 错误 | 处理 |
 |------|------|
-| 连接超时 | 提示检查 VPN（需公司内网） |
+| 连接超时 | 排查数据库连接问题 |
 | 项目未找到 | 运行 `manage.py list` 展示可用项目 |
 | 未识别环境出现 | 走工作流三，不自动归类 |
 | JSON 格式错误 | 提示检查 projects.json 或 --scenes 参数格式 |
-| 密码未设置 | 提示设置 `DELIVERY_DB_PASSWORD` 或 `ORANGE_WRIST_DB_PASSWORD` 环境变量 |
-| 脚本被杀死/无输出 | 检查 /tmp/delivery_err.txt，确认是否 VPN 断开或磁盘满 |
+| 密码未设置 | 提示设置 `DELIVERY_DB_PASSWORD` 环境变量 |
+| 脚本被杀死/无输出 | 检查 /tmp/delivery_err.txt，确认是否数据库断开或磁盘满 |

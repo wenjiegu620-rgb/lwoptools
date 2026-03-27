@@ -9,8 +9,10 @@ delivery-tracker/scripts/manage.py
   search-projects --keyword ...  从 ClickHouse 模糊搜索采集项目（名称+UUID）
   add     --name ... --display ... --delivery-date ... [--total-hours ...]
           --envs '<JSON>' --query-projects '<JSON>'
+          [--daily-collect-target ... --daily-qc-pass-target ... --daily-label-done-target ...]
   archive --name ...             归档（status → inactive）
   add-mapping --key ... --env ... 新增 env_key → 环境名映射
+  set-daily-goals --name ...     设置项目日目标（采集完成/质检通过/标注完成）
 
 envs JSON 格式（数组）：
   [
@@ -34,7 +36,7 @@ CK_CONFIG = {
     "port":     int(os.environ.get("CK_PORT", "9000")),
     "database": os.environ.get("CK_DB", "asset"),
     "user":     os.environ.get("CK_USER", "guwenjie"),
-    "password": os.environ.get("CK_PASSWORD", ""),
+    "password": os.environ.get("CK_PASSWORD", "dFGS%4;b)Cg_yMX:vqb#Z-Q_@^Jy"),
 }
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -95,8 +97,15 @@ def cmd_list(args):
     def print_proj(p):
         scenes = ", ".join(s["name"] for s in p.get("scenes", []))
         n_qp   = len(p.get("query_projects", []))
+        daily = p.get("daily_goals") or {}
+        daily_str = (
+            f"日目标(采集/质检通过/标注完成)："
+            f"{daily.get('collect_done_hours', '—')}h/"
+            f"{daily.get('qc_pass_hours', '—')}h/"
+            f"{daily.get('label_done_hours', '—')}h"
+        )
         print(f"  {p['name']}  ({p.get('display_name', '')})  交付：{p.get('delivery_date','—')}  "
-              f"环境：{scenes or '未配置'}  query_projects：{n_qp}个")
+              f"环境：{scenes or '未配置'}  query_projects：{n_qp}个  {daily_str}")
 
     if active:
         print(f"活跃项目（{len(active)}个）：")
@@ -145,6 +154,15 @@ def cmd_add(args):
     }
     if args.total_hours:
         proj["base_total_hours"] = args.total_hours
+    daily_goals = {}
+    if args.daily_collect_target is not None:
+        daily_goals["collect_done_hours"] = args.daily_collect_target
+    if args.daily_qc_pass_target is not None:
+        daily_goals["qc_pass_hours"] = args.daily_qc_pass_target
+    if args.daily_label_done_target is not None:
+        daily_goals["label_done_hours"] = args.daily_label_done_target
+    if daily_goals:
+        proj["daily_goals"] = daily_goals
 
     config.setdefault("projects", []).append(proj)
     save_config(config)
@@ -153,6 +171,11 @@ def cmd_add(args):
     print(f"  显示名：{proj['display_name']}")
     print(f"  交付日期：{proj['delivery_date']}")
     print(f"  总目标：{args.total_hours or '未设置'}h")
+    if daily_goals:
+        print(f"  日目标（采集完成/质检通过/标注完成）："
+              f"{daily_goals.get('collect_done_hours', '—')}h/"
+              f"{daily_goals.get('qc_pass_hours', '—')}h/"
+              f"{daily_goals.get('label_done_hours', '—')}h")
     print(f"  环境数：{len(scenes)}")
     print(f"  关联项目数：{len(query_projects)}")
 
@@ -190,6 +213,47 @@ def cmd_add_mapping(args):
     save_config(config)
 
 
+def cmd_set_daily_goals(args):
+    config = load_config()
+    target = None
+    for p in config.get("projects", []):
+        if p.get("name") == args.name:
+            target = p
+            break
+
+    if target is None:
+        print(f"❌ 未找到项目 '{args.name}'")
+        sys.exit(1)
+
+    if args.clear:
+        target.pop("daily_goals", None)
+        save_config(config)
+        print(f"✅ 已清除项目 '{args.name}' 的日目标配置")
+        return
+
+    updates = {}
+    if args.daily_collect_target is not None:
+        updates["collect_done_hours"] = args.daily_collect_target
+    if args.daily_qc_pass_target is not None:
+        updates["qc_pass_hours"] = args.daily_qc_pass_target
+    if args.daily_label_done_target is not None:
+        updates["label_done_hours"] = args.daily_label_done_target
+
+    if not updates:
+        print("❌ 请至少提供一个目标字段，或使用 --clear 清空。")
+        sys.exit(1)
+
+    goals = target.setdefault("daily_goals", {})
+    goals.update(updates)
+    save_config(config)
+    print(
+        f"✅ 已更新 '{args.name}' 日目标："
+        f"采集完成={goals.get('collect_done_hours', '—')}h, "
+        f"质检通过={goals.get('qc_pass_hours', '—')}h, "
+        f"标注完成={goals.get('label_done_hours', '—')}h"
+    )
+
+
 # ── 主函数 ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -213,6 +277,9 @@ def main():
                        help='环境配置 JSON 数组，如 \'[{"name":"家居","duration_ratio_min":0.8,"duration_ratio_max":0.85,"min_task_count":300}]\'')
     p_add.add_argument("--query-projects", required=True,
                        help='关联采集项目 JSON 数组，如 \'[{"id":"uuid","name":"project_name"}]\'')
+    p_add.add_argument("--daily-collect-target", type=float, help="日目标：采集完成（小时）")
+    p_add.add_argument("--daily-qc-pass-target", type=float, help="日目标：采集质检通过（小时）")
+    p_add.add_argument("--daily-label-done-target", type=float, help="日目标：标注完成（小时）")
 
     # archive
     p_arc = sub.add_parser("archive", help="归档项目")
@@ -222,6 +289,14 @@ def main():
     p_map = sub.add_parser("add-mapping", help="新增环境映射")
     p_map.add_argument("--key", required=True, help="env_type_name 原始值，如 distribution_center")
     p_map.add_argument("--env", required=True, help="对应中文环境名，如 超市")
+
+    # set-daily-goals
+    p_daily = sub.add_parser("set-daily-goals", help="设置项目日目标")
+    p_daily.add_argument("--name", required=True, help="项目名")
+    p_daily.add_argument("--daily-collect-target", type=float, help="日目标：采集完成（小时）")
+    p_daily.add_argument("--daily-qc-pass-target", type=float, help="日目标：采集质检通过（小时）")
+    p_daily.add_argument("--daily-label-done-target", type=float, help="日目标：标注完成（小时）")
+    p_daily.add_argument("--clear", action="store_true", help="清除日目标配置")
 
     args = parser.parse_args()
 
@@ -235,6 +310,8 @@ def main():
         cmd_archive(args)
     elif args.cmd == "add-mapping":
         cmd_add_mapping(args)
+    elif args.cmd == "set-daily-goals":
+        cmd_set_daily_goals(args)
     else:
         parser.print_help()
         sys.exit(1)
