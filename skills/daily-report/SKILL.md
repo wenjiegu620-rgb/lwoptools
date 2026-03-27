@@ -13,7 +13,8 @@ tools: Bash
 
 - **Clickhouse**: `10.23.206.206:9000`，database=`asset`（需公司内网/VPN）
 - **数据平台 API**: `https://assetserver.lightwheel.net/api/asset/v1`（需公司内网）
-- **Token / Clickhouse 凭据**: 存于 `~/.claude/skills/daily-report/config.json`
+- **默认连接**: 脚本内置最新 Clickhouse 默认凭据（也可用环境变量覆盖）
+- **Token / 覆盖配置**: 可存于 `config.json`，或运行时通过环境变量传入
 
 ## 日报结构
 
@@ -30,16 +31,21 @@ tools: Bash
 告知用户"生成中…"后立即执行：
 
 ```bash
-python3 ~/.claude/skills/daily-report/scripts/query.py
+bash ~/.claude/skills/daily-report/scripts/report.sh
 ```
 
 如需查看指定日期：
 
 ```bash
-python3 ~/.claude/skills/daily-report/scripts/query.py --date 2026-03-17
+bash ~/.claude/skills/daily-report/scripts/report.sh 2026-03-17
 ```
 
 通常 15~30 秒返回。
+
+默认会通过远程机器拉取数据（SSH）：
+- 远程主机：`root@139.224.244.183`
+- 远程 skill 目录：`/root/.agents/skills/daily-report`
+- 可通过环境变量覆盖：`DAILY_REPORT_USE_REMOTE` / `DAILY_REPORT_REMOTE_HOST` / `DAILY_REPORT_REMOTE_SKILL_DIR`
 
 ### Step 2：输出日报
 

@@ -15,7 +15,8 @@ import json
 import os
 import sys
 import requests
-from datetime import date, timedelta
+from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from clickhouse_driver import Client
 
@@ -24,6 +25,12 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
 API_BASE    = "https://assetserver.lightwheel.net/api/asset/v1"
 API_USER    = "wenjie.gu"
+
+DEFAULT_CH_HOST = "10.23.206.206"
+DEFAULT_CH_PORT = 9000
+DEFAULT_CH_DB = "asset"
+DEFAULT_CH_USER = "guwenjie"
+DEFAULT_CH_PASS = "dFGS%4;b)Cg_yMX:vqb#Z-Q_@^Jy"
 
 CLIENT_TAGS   = {"Grape", "Orange", "Orange二期", "Mango", "Mango_egodex", "Strawberry"}
 WRIST_WF_KEYS = {"wf_E5RT0Jigk62smENT", "wf_1btO60viv624FRgD"}
@@ -46,11 +53,11 @@ def load_config():
 
 def get_clickhouse_config(config):
     clickhouse = config.get("clickhouse", {})
-    host = os.getenv("DAILY_REPORT_CH_HOST", clickhouse.get("host"))
-    port = os.getenv("DAILY_REPORT_CH_PORT", clickhouse.get("port", 9000))
-    database = os.getenv("DAILY_REPORT_CH_DB", clickhouse.get("database", "asset"))
-    user = os.getenv("DAILY_REPORT_CH_USER", clickhouse.get("user"))
-    password = os.getenv("DAILY_REPORT_CH_PASS", clickhouse.get("password"))
+    host = os.getenv("DAILY_REPORT_CH_HOST", clickhouse.get("host", DEFAULT_CH_HOST))
+    port = os.getenv("DAILY_REPORT_CH_PORT", clickhouse.get("port", DEFAULT_CH_PORT))
+    database = os.getenv("DAILY_REPORT_CH_DB", clickhouse.get("database", DEFAULT_CH_DB))
+    user = os.getenv("DAILY_REPORT_CH_USER", clickhouse.get("user", DEFAULT_CH_USER))
+    password = os.getenv("DAILY_REPORT_CH_PASS", clickhouse.get("password", DEFAULT_CH_PASS))
 
     missing = [name for name, value in {
         "host": host,
@@ -246,8 +253,6 @@ def query_collection(ck, target_date, collect_pids, projects):
             row[2] += pass_h.get(pid, 0)
             row[3] += total_h.get(pid, 0)
 
-    from collections import defaultdict
-
     key_pids = defaultdict(list)
     for pid in collect_pids:
         meta = projects[pid]
@@ -327,6 +332,91 @@ def query_collection_by_supplier(ck, target_date, collect_pids):
     """, {"pids": pids, "today": today})
 
     return [(r[0] or "未知", r[1], r[2], r[3]) for r in rows]
+
+
+def build_time_ranges(timestamps, gap_minutes=45):
+    """
+    将单个采集员一天内的时间点切分成多个采集时段。
+    相邻时间点超过 gap_minutes 则视为新的时段。
+    """
+    if not timestamps:
+        return []
+    ordered = sorted(timestamps)
+    ranges = []
+    start = ordered[0]
+    end = ordered[0]
+    gap_seconds = gap_minutes * 60
+
+    for ts in ordered[1:]:
+        if (ts - end).total_seconds() > gap_seconds:
+            ranges.append((start, end))
+            start = ts
+            end = ts
+        else:
+            end = ts
+    ranges.append((start, end))
+    return ranges
+
+
+def query_collector_timeslots(ck, target_date, collect_pids, gap_minutes=45):
+    """
+    采集员当日采集时间段明细。
+    返回列表:
+      [(collector, cases, hours, active_span_h, ranges_text), ...]
+    """
+    if not collect_pids:
+        return []
+    today = target_date.isoformat()
+    pids = tuple(collect_pids)
+
+    rows = ck.execute("""
+        SELECT producer,
+               data_uuid,
+               min(event_time) AS first_event,
+               anyIf(video_seconds, video_seconds > 0) AS video_seconds
+        FROM (
+            SELECT data_uuid, producer, event_time, video_seconds,
+                   workflow_run_id,
+                   max(workflow_run_id) OVER (PARTITION BY data_uuid) AS max_run_id
+            FROM workflow_node_run
+            WHERE node_name = 'human_case_produce'
+              AND project_id IN %(pids)s
+              AND toDate(event_time) = %(today)s
+              AND producer != ''
+        ) WHERE workflow_run_id = max_run_id
+        GROUP BY producer, data_uuid
+        ORDER BY producer, first_event
+    """, {"pids": pids, "today": today})
+
+    by_collector = defaultdict(lambda: {"timestamps": [], "hours": 0.0, "cases": 0})
+    for producer, _, first_event, video_seconds in rows:
+        item = by_collector[producer]
+        item["timestamps"].append(first_event)
+        item["cases"] += 1
+        item["hours"] += float(video_seconds or 0) / 3600.0
+
+    result = []
+    for collector, payload in by_collector.items():
+        timestamps = payload["timestamps"]
+        ranges = build_time_ranges(timestamps, gap_minutes=gap_minutes)
+        ranges_text = ", ".join(
+            f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in ranges
+        )
+        first_ts = min(timestamps)
+        last_ts = max(timestamps)
+        active_span_h = (last_ts - first_ts).total_seconds() / 3600.0
+        result.append(
+            (
+                collector,
+                payload["cases"],
+                round(payload["hours"], 2),
+                round(active_span_h, 2),
+                ranges_text,
+            )
+        )
+
+    result.sort(key=lambda x: (-x[2], x[0]))
+    return result
 
 
 def query_labeling(ck, target_date, label_pids, projects):
@@ -489,6 +579,20 @@ def render_supplier(supplier_rows):
     return "\n".join(lines)
 
 
+def render_collector_timeslots(collector_rows):
+    lines = ["### 附：采集员当日采集时间段", ""]
+    if collector_rows:
+        lines += ["| 采集员 | 采集完成(h) | 采集case数 | 活跃跨度(h) | 当日采集时间段 |",
+                  "|---|---|---|---|---|"]
+        for collector, cases, hours, active_span_h, ranges_text in collector_rows:
+            lines.append(
+                f"| {collector} | {hours} | {cases} | {active_span_h} | {ranges_text or '—'} |"
+            )
+    else:
+        lines.append("今日无采集员时间段明细。")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=None, help="YYYY-MM-DD，默认今天")
@@ -517,15 +621,19 @@ def main():
         collect_rows = query_collection(ck, target_date, collect_pids, projects)
         label_rows = query_labeling(ck, target_date, label_pids, projects)
         supplier_rows = query_collection_by_supplier(ck, target_date, collect_pids)
+        collector_rows = query_collector_timeslots(ck, target_date, collect_pids)
     else:
         print("  无符合过滤条件的项目，跳过 Clickhouse 查询", file=sys.stderr)
         collect_rows = {}
         label_rows = {}
         supplier_rows = []
+        collector_rows = []
 
     print(render(target_date, collect_rows, label_rows))
     print()
     print(render_supplier(supplier_rows))
+    print()
+    print(render_collector_timeslots(collector_rows))
 
 
 if __name__ == "__main__":
