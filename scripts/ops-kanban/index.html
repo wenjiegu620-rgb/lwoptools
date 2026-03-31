@@ -1,0 +1,2673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运营监测</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font: 14px/1.5714 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+  background: #0b0b1e; color: #e2e8f0;
+}
+input, button, select { font: inherit; }
+
+/* ── Variables ── */
+:root {
+  --primary: #1677ff;
+  --primary-hover: #4096ff;
+  --primary-bg: rgba(22,119,255,.15);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --border: rgba(99,102,241,.25);
+  --border-light: rgba(99,102,241,.15);
+  --sidebar-bg: #080818;
+  --sidebar-w: 208px;
+  --header-h: 48px;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-secondary: #cbd5e1;
+  --radius: 8px;
+  --shadow-card: 0 1px 8px rgba(0,0,0,.4);
+}
+
+/* ── Layout ── */
+.layout { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  height: 56px; padding: 0 20px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  flex-shrink: 0;
+}
+.sidebar-logo .logo-icon {
+  width: 28px; height: 28px; flex-shrink: 0;
+}
+.sidebar-logo .logo-text {
+  color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.sidebar-nav { padding: 8px 0; flex: 1; }
+.sidebar-section {
+  padding: 16px 20px 6px;
+  font-size: 11px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .6px;
+}
+.sidebar-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 20px; color: rgba(255,255,255,.65);
+  font-size: 13px; cursor: pointer; transition: all .15s;
+  border-radius: 0;
+}
+.sidebar-item:hover { color: #fff; background: rgba(255,255,255,.06); }
+.sidebar-item.active { color: #fff; background: var(--primary); }
+.sidebar-item .icon { font-size: 14px; flex-shrink: 0; }
+.sidebar-tags { padding: 4px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.sidebar-ctag {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 12px; font-size: 12px;
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.55);
+  cursor: pointer; transition: all .15s; border: 1px solid rgba(255,255,255,.1);
+}
+.sidebar-ctag:hover { background: rgba(255,255,255,.15); color: #fff; }
+.sidebar-ctag.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Main area */
+.main-area {
+  margin-left: var(--sidebar-w);
+  width: calc(100vw - var(--sidebar-w));
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+
+/* Top bar */
+.topbar {
+  height: var(--header-h); background: #13132d;
+  border-bottom: 1px solid rgba(99,102,241,.2);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; position: sticky; top: 0; z-index: 50;
+}
+.breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; color: var(--text-muted);
+}
+.breadcrumb .sep { color: var(--border); font-size: 12px; }
+.breadcrumb .current { color: var(--text); font-weight: 500; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right input[type=date],
+.topbar-right input[type=number],
+.topbar-right input[type=text] {
+  height: 32px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 11px; font-size: 13px; color: var(--text); outline: none;
+  transition: border-color .2s;
+}
+.topbar-right input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(22,119,255,.1); }
+.topbar-field { display: flex; align-items: center; gap: 6px; }
+.topbar-label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border-light); }
+.countdown-badge {
+  font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+}
+.countdown-badge.ok   { background: rgba(74,222,128,.1);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.countdown-badge.warn { background: rgba(251,191,36,.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
+.countdown-badge.bad  { background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+
+/* Content */
+.content { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Cards */
+.card {
+  background: #13132d; border: 1px solid rgba(99,102,241,.2);
+  border-radius: var(--radius); box-shadow: var(--shadow-card);
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 0; margin-bottom: 14px;
+}
+.card-title {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title .dot {
+  width: 3px; height: 14px; background: var(--primary);
+  border-radius: 2px; flex-shrink: 0;
+}
+.card-body { padding: 0 20px 16px; }
+.card-body.no-top { padding-top: 0; }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat {
+  background: #13132d; border: 1px solid rgba(99,102,241,.2);
+  border-radius: var(--radius); padding: 16px 20px;
+  box-shadow: var(--shadow-card); position: relative; overflow: hidden;
+}
+.stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.stat-label { font-size: 13px; color: #94a3b8; }
+.stat-value { font-size: 28px; font-weight: 700; margin-top: 6px; color: #e2e8f0; line-height: 1; }
+.stat-sub { font-size: 12px; color: #64748b; margin-top: 6px; }
+.stat.success .stat-value { color: var(--success); }
+.stat.warning .stat-value { color: var(--warning); }
+.stat.danger  .stat-value { color: var(--danger); }
+
+/* Progress bar */
+.progress-bar { height: 6px; background: rgba(99,102,241,.15); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 15px; border-radius: 6px;
+  font-size: 13px; font-weight: 400; cursor: pointer;
+  border: 1px solid transparent; transition: all .15s;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary   { background: linear-gradient(135deg,#4f46e5,#38bdf8); color: #fff; border: none; }
+.btn-primary:hover:not(:disabled) { opacity: .88; }
+.btn-default   { background: rgba(99,102,241,.1); color: #e2e8f0; border-color: rgba(99,102,241,.3); }
+.btn-default:hover:not(:disabled) { background: rgba(99,102,241,.18); border-color: #6366f1; }
+.btn-success   { background: var(--success); color: #0b0b1e; border-color: var(--success); }
+.btn-warning   { background: var(--warning); color: #0b0b1e; border-color: var(--warning); }
+.btn-danger    { background: var(--danger);  color: #fff;    border-color: var(--danger); }
+.btn-text      { background: none; border-color: transparent; color: #818cf8; padding: 0 4px; height: auto; }
+.btn-text:hover { color: #a5b4fc; }
+.btn-sm { height: 28px; padding: 0 11px; font-size: 12px; }
+.btn-icon-only { width: 28px; height: 28px; padding: 0; justify-content: center;
+  background: none; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; }
+.btn-icon-only:hover { color: var(--danger); background: rgba(248,113,113,.1); }
+
+/* Form elements */
+.input {
+  height: 32px; border: 1px solid rgba(99,102,241,.35); border-radius: 6px;
+  padding: 0 11px; font-size: 13px; outline: none; transition: all .2s;
+  color: #e2e8f0; background: #080818;
+}
+.input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.15); }
+.input:hover:not(:focus) { border-color: #6366f1; }
+
+/* Search */
+.search-wrap { position: relative; }
+.search-input { width: 280px; padding-left: 30px; }
+.search-icon {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 13px; pointer-events: none;
+}
+.dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  width: 360px; background: #13132d;
+  border: 1px solid rgba(99,102,241,.25); border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5); max-height: 240px;
+  overflow-y: auto; z-index: 200;
+}
+.dropdown-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; font-size: 13px; color: #cbd5e1;
+}
+.dropdown-item:hover { background: rgba(99,102,241,.12); }
+.dropdown-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+/* Tags */
+.tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; margin-top: 10px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(99,102,241,.15); color: #818cf8;
+  border: 1px solid rgba(99,102,241,.3); border-radius: 4px;
+  padding: 1px 7px; font-size: 12px;
+}
+.tag-close { cursor: pointer; color: #6366f1; line-height: 1; font-size: 14px; }
+.tag-close:hover { color: var(--danger); }
+.tags-empty { font-size: 13px; color: var(--text-muted); }
+
+/* Pipeline config grid */
+.pipeline-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.pipeline-stage {
+  border: 1px solid rgba(99,102,241,.2); border-radius: 8px;
+  padding: 14px 16px; background: #0f0f25;
+}
+.pipeline-stage.parallel { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.08); }
+.pipeline-stage-name {
+  font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.parallel-badge {
+  font-size: 10px; background: rgba(99,102,241,.25); color: #a5b4fc;
+  border-radius: 3px; padding: 1px 5px; font-weight: 400;
+}
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; font-size: 13px;
+}
+.field-row:last-child { margin-bottom: 0; }
+.field-row label { color: var(--text-secondary); }
+.field-row .input { width: 72px; text-align: right; }
+
+/* Stock table */
+.ant-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ant-table th {
+  background: rgba(99,102,241,.08); font-weight: 500; font-size: 13px;
+  padding: 10px 16px; text-align: left;
+  border-bottom: 1px solid rgba(99,102,241,.15);
+  color: #94a3b8; white-space: nowrap;
+}
+.ant-table td {
+  padding: 10px 16px; border-bottom: 1px solid rgba(99,102,241,.1);
+  color: #cbd5e1;
+}
+.ant-table tr:last-child td { border-bottom: none; }
+.ant-table tbody tr:hover td { background: rgba(99,102,241,.08); }
+.ant-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ant-table tfoot td {
+  background: rgba(99,102,241,.08); font-weight: 600; border-top: 1px solid rgba(99,102,241,.15);
+  padding: 10px 16px; color: #e2e8f0;
+}
+
+/* Schedule table */
+.sched-input {
+  width: 88px; height: 28px; border: 1px solid transparent;
+  border-radius: 4px; padding: 0 8px; font-size: 13px;
+  text-align: right; background: transparent; outline: none;
+  color: #e2e8f0; transition: all .15s;
+}
+.sched-input:hover, .sched-input:focus {
+  border-color: #6366f1; background: #080818;
+  box-shadow: 0 0 0 2px rgba(99,102,241,.15);
+}
+
+/* Tags/badges */
+.badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 1px 7px; font-size: 12px; }
+.badge-success { background: rgba(74,222,128,.1);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.badge-danger  { background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+.badge-blue    { background: rgba(99,102,241,.15); color: #818cf8; border: 1px solid rgba(99,102,241,.3); }
+.badge-gray    { background: rgba(255,255,255,.06); color: #94a3b8; border: 1px solid rgba(255,255,255,.1); }
+
+/* Analysis layout */
+.analysis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.analysis-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(99,102,241,.12);
+  font-size: 13px;
+}
+.analysis-row:last-child { border-bottom: none; }
+.analysis-row.total { font-weight: 600; font-size: 15px; padding-top: 12px; }
+.analysis-row .val { font-variant-numeric: tabular-nums; font-weight: 500; }
+.analysis-row.success .val { color: var(--success); }
+.analysis-row.warning .val { color: var(--warning); }
+.analysis-row.danger  .val { color: var(--danger); }
+.divider { height: 1px; background: rgba(99,102,241,.15); margin: 8px 0; }
+
+/* Fill tools */
+.fill-tools {
+  background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.3); border-radius: 8px;
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap;
+}
+.fill-tools .label { font-size: 13px; color: #818cf8; font-weight: 500; flex-shrink: 0; }
+
+/* Banner */
+.banner {
+  display: none; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3);
+  border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #fbbf24;
+  margin-bottom: 12px;
+}
+.banner.visible { display: block; }
+
+/* AI Panel */
+.ai-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; display: none; }
+.ai-overlay.open { display: block; }
+.ai-panel {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 480px;
+  background: #13132d; box-shadow: -4px 0 32px rgba(0,0,0,.6);
+  display: flex; flex-direction: column; z-index: 301;
+  transform: translateX(100%); transition: transform .25s ease;
+}
+.ai-panel.open { transform: translateX(0); }
+.ai-panel-head {
+  height: 54px; padding: 0 20px;
+  border-bottom: 1px solid rgba(99,102,241,.2);
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+.ai-panel-head h2 { font-size: 15px; font-weight: 600; flex: 1; color: #e2e8f0; }
+.ai-panel-body { flex: 1; overflow-y: auto; padding: 16px 20px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; color: #cbd5e1; }
+.ai-loading::after { content: '▋'; animation: blink .7s step-start infinite; color: var(--primary); }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Toolbar row */
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.toolbar .spacer { flex: 1; }
+
+/* Text utils */
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 12px; }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-danger  { color: var(--danger); }
+.text-primary { color: var(--primary); }
+.fw-600 { font-weight: 600; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+
+/* ── 采集统计 暗色主题 ── */
+.coll-page {
+  background: #0b0b1e;
+  min-height: calc(100vh - 48px);
+  padding: 20px 24px;
+  gap: 16px;
+}
+.coll-topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px;
+  background: #13132d;
+  border-radius: 10px;
+  border: 1px solid rgba(99,102,241,.2);
+}
+.coll-topbar-label { color: #94a3b8; font-size: 13px; }
+.coll-date-input {
+  height: 32px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid rgba(99,102,241,.35);
+  background: #0b0b1e; color: #e2e8f0; font-size: 13px; outline: none;
+}
+.coll-date-input:focus { border-color: #6366f1; }
+.coll-btn {
+  height: 32px; padding: 0 16px; border-radius: 6px;
+  background: linear-gradient(135deg,#4f46e5,#38bdf8);
+  color: #fff; font-size: 13px; border: none; cursor: pointer;
+  transition: opacity .15s;
+}
+.coll-btn:hover { opacity: .85; }
+.coll-status { font-size: 12px; color: #94a3b8; margin-left: 4px; }
+
+/* 汇总卡片 */
+.coll-summary {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+}
+.coll-stat {
+  background: #13132d;
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 10px; padding: 16px 18px;
+  position: relative; overflow: hidden;
+}
+.coll-stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.coll-stat-label { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+.coll-stat-value { font-size: 26px; font-weight: 700; color: #e2e8f0; line-height: 1; }
+.coll-stat-sub   { font-size: 11px; color: #64748b; margin-top: 4px; }
+.coll-stat.accent .coll-stat-value { background: linear-gradient(135deg,#818cf8,#38bdf8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+/* 供应商卡片 */
+.coll-vendor-card {
+  background: #13132d;
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+}
+.coll-vendor-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; cursor: pointer;
+  transition: background .15s;
+}
+.coll-vendor-header:hover { background: rgba(99,102,241,.08); }
+.coll-vendor-name { font-size: 15px; font-weight: 600; color: #c7d2fe; }
+.coll-vendor-meta { display: flex; gap: 20px; align-items: center; }
+.coll-vendor-stat { text-align: right; }
+.coll-vendor-stat-val { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+.coll-vendor-stat-lbl { font-size: 11px; color: #64748b; }
+.coll-vendor-badge {
+  padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 500;
+  background: rgba(99,102,241,.15); color: #818cf8;
+  border: 1px solid rgba(99,102,241,.3);
+}
+.coll-chevron { color: #64748b; font-size: 12px; transition: transform .2s; }
+.coll-vendor-card.open .coll-chevron { transform: rotate(90deg); }
+
+/* 人员明细表 */
+.coll-persons { display: none; }
+.coll-vendor-card.open .coll-persons { display: block; }
+.coll-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.coll-table th {
+  padding: 8px 16px; text-align: left;
+  color: #64748b; font-weight: 500; font-size: 12px;
+  border-top: 1px solid rgba(99,102,241,.15);
+  background: rgba(99,102,241,.06);
+}
+.coll-table td {
+  padding: 9px 16px;
+  color: #cbd5e1;
+  border-top: 1px solid rgba(99,102,241,.08);
+}
+.coll-table tr:hover td { background: rgba(99,102,241,.06); }
+.coll-rate-bar {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.coll-rate-track {
+  width: 50px; height: 4px; background: rgba(255,255,255,.08);
+  border-radius: 2px; overflow: hidden;
+}
+.coll-rate-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.coll-tag-time {
+  font-size: 11px; color: #94a3b8;
+  background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.2);
+  border-radius: 4px; padding: 1px 6px;
+}
+
+/* ── 全盘数据页 ── */
+.ov-page {
+  background: #0b0b1e; min-height: calc(100vh - 48px);
+  padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;
+}
+.ov-topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 20px; background: #13132d;
+  border-radius: 10px; border: 1px solid rgba(99,102,241,.2);
+}
+.ov-title { font-size: 16px; font-weight: 600; color: #c7d2fe; flex: 1; min-width: 100px; }
+.ov-meta  { font-size: 12px; color: #64748b; }
+.ov-btn {
+  height: 30px; padding: 0 14px; border-radius: 6px; font-size: 12px;
+  border: none; cursor: pointer; white-space: nowrap;
+}
+.ov-btn-primary {
+  background: linear-gradient(135deg,#4f46e5,#38bdf8); color: #fff;
+}
+.ov-btn-secondary {
+  background: rgba(99,102,241,.15); color: #818cf8;
+  border: 1px solid rgba(99,102,241,.3);
+}
+.ov-btn:hover { opacity: .85; }
+.ov-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* 进度日志 */
+.ov-log {
+  background: #080818; border: 1px solid rgba(99,102,241,.2);
+  border-radius: 8px; padding: 14px 16px;
+  font-family: monospace; font-size: 12px; color: #94a3b8;
+  max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+}
+
+/* 报告 iframe */
+.ov-report-wrap {
+  flex: 1; background: #fff; border-radius: 10px; overflow: hidden;
+  border: 1px solid rgba(99,102,241,.2);
+  min-height: 600px;
+}
+.ov-report-wrap iframe {
+  width: 100%; height: 100%; min-height: 600px; border: none;
+}
+.ov-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 300px; color: #475569; font-size: 14px; gap: 12px;
+}
+.ov-empty-icon { font-size: 40px; opacity: .4; }
+
+/* 新项目弹窗 */
+.ov-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9000;
+}
+.ov-modal {
+  background: #13132d; border: 1px solid rgba(99,102,241,.3);
+  border-radius: 12px; width: 680px; max-width: 95vw;
+  max-height: 80vh; display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.ov-modal-head {
+  padding: 16px 20px; border-bottom: 1px solid rgba(99,102,241,.15);
+  font-size: 15px; font-weight: 600; color: #c7d2fe;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ov-modal-body {
+  flex: 1; overflow-y: auto; padding: 16px 20px;
+}
+.ov-modal-foot {
+  padding: 14px 20px; border-top: 1px solid rgba(99,102,241,.15);
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.ov-np-item {
+  display: grid; grid-template-columns: 24px 1fr auto;
+  gap: 8px; align-items: start;
+  padding: 10px 0; border-bottom: 1px solid rgba(99,102,241,.08);
+}
+.ov-np-item:last-child { border-bottom: none; }
+.ov-np-info { display: flex; flex-direction: column; gap: 4px; }
+.ov-np-name { font-size: 13px; color: #e2e8f0; word-break: break-all; }
+.ov-np-cnt  { font-size: 11px; color: #64748b; }
+.ov-np-fields {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  margin-top: 6px;
+}
+.ov-np-sel {
+  height: 26px; padding: 0 6px; border-radius: 4px; font-size: 11px;
+  background: #0b0b1e; color: #e2e8f0;
+  border: 1px solid rgba(99,102,241,.25); outline: none;
+}
+.ov-np-sel:focus { border-color: #6366f1; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-text">运营监测</span>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="sidebar-section">运营数据</div>
+    <div class="sidebar-item" data-page="collectors" onclick="switchPage('collectors')">采集详情</div>
+    <div class="sidebar-item" data-page="trend" onclick="switchPage('trend')">采集趋势</div>
+    <div class="sidebar-item" data-page="overview" onclick="switchPage('overview')">全盘数据</div>
+    <div class="sidebar-section" style="margin-top:8px">交付管理</div>
+    <div class="sidebar-tags">
+      <span class="sidebar-ctag" onclick="quickFilter('grape')" data-c="grape">grape</span>
+      <span class="sidebar-ctag" onclick="quickFilter('mango')" data-c="mango">mango</span>
+      <span class="sidebar-ctag" onclick="quickFilter('orange')" data-c="orange">orange</span>
+      <span class="sidebar-ctag" onclick="quickFilter('strawberry')" data-c="strawberry">strawberry</span>
+    </div>
+    <div class="sidebar-item active" data-page="schedule" onclick="switchPage('schedule')">排期</div>
+    <div class="sidebar-item" data-page="history" onclick="switchPage('history')">历史产出</div>
+    <div class="sidebar-section" style="margin-top:8px">人员管理</div>
+    <div class="sidebar-item" onclick="window.open('/performance.html', '_blank')">人员绩效</div>
+    <div class="sidebar-item" onclick="aiAnalyze()">AI 风险分析</div>
+    <div class="sidebar-item" id="sidebarAlertBtn" onclick="aiAlert()" style="display:none">AI 补救方案</div>
+  </nav>
+  <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
+    <a href="/logout" style="display:block;text-align:center;padding:8px;border-radius:8px;
+       color:rgba(255,255,255,.45);font-size:12px;text-decoration:none;
+       transition:background .2s" onmouseover="this.style.background='rgba(255,255,255,.08)'"
+       onmouseout="this.style.background=''">退出登录</a>
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<div class="main-area">
+
+  <!-- Top bar（仅排期看板页显示） -->
+  <div class="topbar" id="mainTopbar" style="display:none">
+    <div class="breadcrumb">
+      <span>交付排期</span>
+      <span class="sep">›</span>
+      <span><input class="input" id="hClient" value="grape" style="width:70px;height:26px;font-size:13px" placeholder="客户"></span>
+      <span class="sep">›</span>
+      <span><input class="input" id="hProject" value="mango" style="width:80px;height:26px;font-size:13px" placeholder="项目"></span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-field">
+        <span class="topbar-label">截止</span>
+        <input class="input" id="hDeadline" type="date" value="2026-04-03" style="width:136px">
+      </div>
+      <div class="topbar-divider"></div>
+      <div class="topbar-field">
+        <span class="topbar-label">目标</span>
+        <input class="input" id="hTarget" type="number" value="550" style="width:72px"> <span class="topbar-label">h</span>
+      </div>
+      <div class="topbar-divider"></div>
+      <span class="countdown-badge" id="hCountdown">—</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="pageSchedule">
+
+    <!-- 排期选择器 -->
+    <div class="card" style="padding:14px 20px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:13px;color:#94a3b8;white-space:nowrap">交付项目</div>
+        <input id="deliveryProject" class="input" placeholder="如：Mango-DJI-500h" style="width:200px;height:32px;font-size:13px">
+        <div style="font-size:13px;color:#94a3b8;white-space:nowrap">排期版本</div>
+        <select id="schedSelect" class="input" style="width:220px;height:32px;font-size:13px" onchange="schedLoad(this.value)">
+          <option value="">— 选择已保存排期 —</option>
+        </select>
+        <select id="schedVerSelect" class="input" style="width:180px;height:32px;font-size:13px;display:none" onchange="schedLoadVersion(this.value)"></select>
+        <button class="btn btn-default btn-sm" onclick="schedNew()">＋ 新建</button>
+        <button class="btn btn-primary btn-sm" onclick="schedSave()">💾 保存</button>
+        <button class="btn btn-default btn-sm" id="schedDeleteBtn" style="display:none;color:#f87171;border-color:rgba(248,113,113,.3)" onclick="schedDelete()">删除</button>
+        <div style="flex:1"></div>
+        <span id="schedSavedAt" style="font-size:12px;color:#475569"></span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat" id="scTarget">
+        <div class="stat-label">交付目标</div>
+        <div class="stat-value">—</div>
+        <div class="stat-sub">—</div>
+      </div>
+      <div class="stat" id="scStock">
+        <div class="stat-label">存量预计可交付</div>
+        <div class="stat-value">—</div>
+        <div class="stat-sub">截止日前</div>
+      </div>
+      <div class="stat" id="scNew">
+        <div class="stat-label">排期新增可交付</div>
+        <div class="stat-value">—</div>
+        <div class="stat-sub">截止日前</div>
+      </div>
+      <div class="stat" id="scGap">
+        <div class="stat-label">缺口 / 剩余</div>
+        <div class="stat-value">—</div>
+        <div class="stat-sub">—</div>
+        <div class="progress-bar mt-2">
+          <div class="progress-fill" id="progressFill" style="width:0;background:var(--primary)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 切换 -->
+    <div style="display:flex;gap:6px;margin-bottom:2px">
+      <button class="btn btn-sm" id="tabBtnPlan"   onclick="schedSwitchTab('plan')"   style="background:var(--primary);color:#fff;border:none">📋 排期计划</button>
+      <button class="btn btn-default btn-sm" id="tabBtnActual" onclick="schedSwitchTab('actual')">📊 计划 vs 实际</button>
+      <button class="btn btn-default btn-sm" id="tabBtnStock"  onclick="schedSwitchTab('stock')">🏭 流水线存量</button>
+    </div>
+
+    <!-- ── Tab: 排期计划 ── -->
+    <div id="tabPlan">
+
+      <!-- 关联采集项目 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span>关联采集项目</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-blue" id="selectedCount">未选择</span>
+            <button class="btn btn-primary btn-sm" id="fetchStockBtn" onclick="fetchStock(true)">拉取最新</button>
+            <button class="btn btn-default btn-sm" id="fetchStockCacheBtn" onclick="fetchStock(false)">用缓存拉取</button>
+            <button class="btn btn-default btn-sm" onclick="clearSelection()">清空</button>
+            <span id="stockFetchedAt" style="font-size:11px;color:#475569;margin-left:4px"></span>
+          </div>
+        </div>
+        <div class="card-body no-top">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="input search-input" id="searchInput" placeholder="搜索项目名称（如 mango、grape_腕部）" autocomplete="off">
+            <div class="dropdown" id="searchDropdown" style="display:none"></div>
+          </div>
+          <div class="tags-wrap" id="tagsRow">
+            <span class="tags-empty">尚未选择采集项目</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 供应商配置 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span>供应商配置</div>
+          <span style="font-size:12px;color:#475569">从数据库加载</span>
+        </div>
+        <div class="card-body no-top">
+          <div id="vendorConfigList" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+        </div>
+      </div>
+
+      <!-- 每日排期 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span>每日排期计划</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:12px;color:#64748b">快速填充人力：</span>
+            <input id="fillLabelH" class="input" type="number" placeholder="标注h" style="width:72px;height:28px;font-size:12px" value="96">
+            <button class="btn btn-default btn-sm" onclick="schedFillEmpty()">填充空行</button>
+            <button class="btn btn-default btn-sm" onclick="schedFillDays()">填充至截止日</button>
+            <button class="btn btn-default btn-sm" onclick="clearSchedule()">清空</button>
+            <button class="btn btn-default btn-sm" onclick="exportCSV()">导出 CSV</button>
+          </div>
+        </div>
+        <div class="card-body no-top">
+          <div style="overflow-x:auto">
+            <table class="ant-table" id="schedTable">
+              <thead id="schedThead">
+                <tr>
+                  <th>日期</th>
+                  <th class="num">每日采集(h)</th>
+                  <th class="num">累计采集(h)</th>
+                  <th class="num">计划标注(h)</th>
+                  <th class="num">标注完成(h)</th>
+                  <th class="num">累计标注(h)</th>
+                  <th class="num">打包完成(h)</th>
+                  <th class="num">累计打包(h)</th>
+                  <th>状态</th>
+                  <th style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="schedBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 汇总分析 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span>汇总分析</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-default btn-sm" onclick="aiAnalyze()">🔍 AI 风险分析</button>
+            <button class="btn btn-default btn-sm" id="aiAlertBtn" onclick="aiAlert()" style="display:none">⚠️ AI 补救方案</button>
+          </div>
+        </div>
+        <div class="card-body no-top">
+          <div class="analysis-grid">
+            <div>
+              <div class="analysis-row"><span>目标交付量</span><span class="val" id="aTarget">—</span></div>
+              <div class="analysis-row"><span>存量预计可交付（截止日前）</span><span class="val" id="aStock">—</span></div>
+              <div class="analysis-row"><span>排期新增可交付（截止日前）</span><span class="val" id="aNew">—</span></div>
+              <div class="divider"></div>
+              <div class="analysis-row total" id="aTotalRow"><span>合计预计可交付</span><span class="val" id="aTotal">—</span></div>
+              <div class="analysis-row" id="aGapRow"><span>缺口 / 剩余</span><span class="val" id="aGap">—</span></div>
+            </div>
+            <div>
+              <div class="analysis-row"><span>今日</span><span class="val" id="aNow">—</span></div>
+              <div class="analysis-row"><span>截止日</span><span class="val" id="aDeadline">—</span></div>
+              <div class="analysis-row"><span>剩余日历天</span><span class="val" id="aDaysLeft">—</span></div>
+              <div class="analysis-row"><span>有效采集天（能赶上截止）</span><span class="val" id="aEffDays">—</span></div>
+              <div class="analysis-row"><span>所需每日采集量</span><span class="val fw-600 text-primary" id="aSuggest">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 流水线配置（折叠） -->
+      <div class="card">
+        <div class="card-header" style="cursor:pointer" onclick="togglePipeline()">
+          <div class="card-title"><span class="dot"></span>流水线配置</div>
+          <span id="pipelineToggleIcon" style="color:#64748b;font-size:12px">▼ 展开</span>
+        </div>
+        <div id="pipelineBody" style="display:none">
+          <div class="card-body no-top">
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px">② ③ 语义 / 手势标注并行，两项均完成才算标注完成</div>
+            <div class="pipeline-grid">
+              <div class="pipeline-stage">
+                <div class="pipeline-stage-name">① 采集质检</div>
+                <div class="field-row"><label>通过率 %</label><input class="input" id="qcRate" type="number" value="85" min="0" max="100" step="0.1" oninput="onConfigChange()"></div>
+                <div class="field-row"><label>周期（天）</label><input class="input" id="qcDays" type="number" value="1" min="0" max="30" oninput="onConfigChange()"></div>
+              </div>
+              <div class="pipeline-stage parallel">
+                <div class="pipeline-stage-name">② 语义标注 <span class="parallel-badge">并行</span></div>
+                <div class="field-row"><label>通过率 %</label><input class="input" id="semRate" type="number" value="98" min="0" max="100" step="0.1" oninput="onConfigChange()"></div>
+                <div class="field-row"><label>周期（天）</label><input class="input" id="semDays" type="number" value="3" min="0" max="30" oninput="onConfigChange()"></div>
+              </div>
+              <div class="pipeline-stage parallel">
+                <div class="pipeline-stage-name">③ 手势标注 <span class="parallel-badge">并行</span></div>
+                <div class="field-row"><label>通过率 %</label><input class="input" id="poseRate" type="number" value="98" min="0" max="100" step="0.1" oninput="onConfigChange()"></div>
+                <div class="field-row"><label>周期（天）</label><input class="input" id="poseDays" type="number" value="3" min="0" max="30" oninput="onConfigChange()"></div>
+              </div>
+              <div class="pipeline-stage">
+                <div class="pipeline-stage-name">④ 打包</div>
+                <div class="field-row"><label>留存率 %</label><input class="input" id="packRate" type="number" value="90" min="0" max="100" step="0.1" oninput="onConfigChange()"></div>
+                <div class="field-row"><label>周期（天）</label><input class="input" id="pkgDays" type="number" value="1" min="0" max="30" oninput="onConfigChange()"></div>
+              </div>
+            </div>
+            <div class="mt-3 text-sm text-muted">
+              总周期 <strong id="totalDaysDisplay">—</strong> 天 ｜
+              综合良率 <strong id="overallYieldDisplay">—</strong> ｜
+              采集 100h → 可交付 <strong id="yieldHDisplay">—</strong>h
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /tabPlan -->
+
+    <!-- ── Tab: 计划 vs 实际 ── -->
+    <div id="tabActual" style="display:none">
+      <div class="card" style="padding:16px">
+        <!-- 周报指标卡片 -->
+        <div id="weeklyReport" style="margin-bottom:16px">
+          <div style="font-size:14px;font-weight:600;color:#1e293b;margin-bottom:10px">📊 交付项目周报</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">采集达标率</div>
+              <div id="collectRate" style="font-size:20px;font-weight:600">—</div>
+              <div id="collectDiff" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">标注达标率</div>
+              <div id="labelRate" style="font-size:20px;font-weight:600">—</div>
+              <div id="labelDiff" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">打包达标率</div>
+              <div id="packRate" style="font-size:20px;font-weight:600">—</div>
+              <div id="packDiff" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">剩余缺口</div>
+              <div id="remainGap" style="font-size:20px;font-weight:600">—</div>
+              <div id="gapPercent" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">后续排期可交付</div>
+              <div id="futureDeliver" style="font-size:20px;font-weight:600">—</div>
+              <div id="futureNote" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+            <div class="card" style="padding:12px">
+              <div style="font-size:12px;color:#64748b;margin-bottom:6px">截止日倒计时</div>
+              <div id="daysLeft" style="font-size:20px;font-weight:600">—</div>
+              <div id="deadlineDate" style="font-size:11px;margin-top:4px">—</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-default btn-sm" onclick="schedLoadActual()">🔄 刷新实际数据</button>
+        </div>
+        <!-- 明细表 -->
+        <div style="overflow-x:auto">
+          <table class="ant-table" id="actualTable">
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th class="num" style="color:#38bdf8">每日采集(h)</th>
+                <th class="num" style="color:#34d399">累计采集(h)</th>
+                <th class="num" style="color:#a78bfa">计划标注(h)</th>
+                <th class="num" style="color:#f59e0b">标注完成(h)</th>
+                <th class="num" style="color:#ec4899">打包完成(h)</th>
+              </tr>
+            </thead>
+            <tbody id="actualBody">
+              <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">点击「刷新实际数据」加载</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /tabActual -->
+
+    <!-- ── Tab: 流水线存量 ── -->
+    <div id="tabStock" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span>流水线存量</div>
+        </div>
+        <div class="card-body no-top">
+          <div class="banner" id="stockWarning">⚠ 部分项目采集小时为0，可能时长在后续节点写入（如 P+T 系列）</div>
+          <div style="overflow-x:auto">
+            <table class="ant-table" id="stockTable">
+              <thead>
+                <tr>
+                  <th>流水线阶段</th>
+                  <th class="num">在途小时</th>
+                  <th class="num">损耗后预计可交付</th>
+                  <th class="num">预计到位时间</th>
+                  <th class="num">截止日前可到位</th>
+                </tr>
+              </thead>
+              <tbody id="stockBody">
+                <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">请先关联采集项目并点击「拉取存量」</td></tr>
+              </tbody>
+              <tfoot id="stockFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div><!-- /tabStock -->
+
+  </div><!-- /pageSchedule -->
+
+  <!-- ── History Page ── -->
+  <div class="content" id="pageHistory" style="display:none">
+
+    <!-- Chart card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="dot"></div>历史日产出趋势</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="topbar-label">起始</span>
+          <input class="input" id="hStart" type="date" style="width:140px">
+          <span class="topbar-label">至</span>
+          <input class="input" id="hEnd" type="date" style="width:140px">
+          <button class="btn btn-primary btn-sm" onclick="loadHistory()">查询</button>
+          <span id="historyNote" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="historyEmpty" style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">请先在排期看板中选择项目，然后点击查询</div>
+        <canvas id="historyChart" style="display:none"></canvas>
+      </div>
+    </div>
+
+    <!-- Table card -->
+    <div class="card" id="historyTableCard" style="display:none">
+      <div class="card-header">
+        <div class="card-title"><div class="dot"></div>每日明细</div>
+        <span style="font-size:12px;color:var(--text-muted)">周日底色标灰（通常休息）</span>
+      </div>
+      <div class="card-body no-top">
+        <div id="historyTable"></div>
+      </div>
+    </div>
+
+  </div><!-- /pageHistory -->
+
+  <!-- ── 采集统计 ── -->
+  <div class="content coll-page" id="pageCollectors" style="display:none">
+    <!-- 顶部日期 -->
+    <div class="coll-topbar">
+      <span class="coll-topbar-label">日期</span>
+      <input type="date" id="collDate" class="coll-date-input">
+      <button class="coll-btn" onclick="loadCollectors()">查询</button>
+      <button class="coll-btn" style="background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8" onclick="exportCollectorsExcel()">导出 Excel</button>
+      <span id="collStatus" class="coll-status"></span>
+    </div>
+
+    <!-- 汇总卡片 -->
+    <div class="coll-summary" id="collSummary"></div>
+
+    <!-- 供应商列表 -->
+    <div id="collVendors"></div>
+  </div><!-- /pageCollectors -->
+
+  <!-- ── 采集趋势 ── -->
+  <div class="content" id="pageTrend" style="display:none">
+    <div class="coll-topbar" style="gap:12px">
+      <span class="coll-topbar-label">近</span>
+      <select id="trendDays" class="coll-date-input" style="width:80px">
+        <option value="30">30 天</option>
+        <option value="60" selected>60 天</option>
+        <option value="90">90 天</option>
+      </select>
+      <span class="coll-topbar-label">单位</span>
+      <select id="trendMetric" class="coll-date-input" style="width:80px" onchange="if(_trendData)renderTrend()">
+        <option value="hours">小时 (h)</option>
+        <option value="cases">条数</option>
+      </select>
+      <button class="coll-btn" onclick="loadTrend()">查询</button>
+      <span id="trendStatus" class="coll-status"></span>
+    </div>
+    <!-- 汇总指标 -->
+    <div id="trendSummary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <!-- 图表 -->
+    <div class="card" style="padding:20px">
+      <canvas id="trendChart" style="max-height:340px"></canvas>
+    </div>
+    <!-- 明细表 -->
+    <div class="card" id="trendTableCard" style="display:none;margin-top:16px;padding:16px">
+      <div id="trendTable"></div>
+    </div>
+  </div><!-- /pageTrend -->
+
+  <!-- ── 全盘数据 ── -->
+  <div class="content ov-page" id="pageOverview" style="display:none">
+    <div class="ov-topbar">
+      <span class="ov-title">🌐 全盘数据</span>
+      <span class="ov-meta" id="ovMeta"></span>
+      <button class="ov-btn ov-btn-secondary" id="ovViewBtn" onclick="ovViewReport()" style="display:none">查看上次报告</button>
+      <button class="ov-btn ov-btn-primary"   id="ovPullBtn" onclick="ovStartPull()">拉取数据</button>
+    </div>
+
+    <!-- 进度日志（运行时显示） -->
+    <div class="ov-log" id="ovLog" style="display:none"></div>
+
+    <!-- 报告展示区 -->
+    <div class="ov-report-wrap" id="ovReportWrap" style="display:none">
+      <iframe id="ovIframe" src=""></iframe>
+    </div>
+
+    <!-- 空状态 -->
+    <div class="ov-empty" id="ovEmpty">
+      <div class="ov-empty-icon">📊</div>
+      <div>暂无报告，点击「拉取数据」生成全盘分析</div>
+    </div>
+  </div><!-- /pageOverview -->
+
+
+
+  <!-- 新项目弹窗 -->
+  <div class="ov-modal-overlay" id="ovModal" style="display:none">
+    <div class="ov-modal">
+      <div class="ov-modal-head">
+        <span>发现未登记的项目</span>
+        <span id="ovModalCount" style="font-size:12px;color:#64748b"></span>
+      </div>
+      <div class="ov-modal-body" id="ovModalBody"></div>
+      <div class="ov-modal-foot">
+        <button class="ov-btn ov-btn-secondary" onclick="ovModalSkip()">跳过，不添加</button>
+        <button class="ov-btn ov-btn-primary"   onclick="ovModalConfirm()">添加选中并继续</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-area -->
+</div><!-- /layout -->
+
+<!-- AI Panel -->
+<div class="ai-overlay" id="aiOverlay" onclick="closeAI()"></div>
+<div class="ai-panel" id="aiPanel">
+  <div class="ai-panel-head">
+    <span>🤖</span>
+    <h2 id="aiTitle">AI 分析</h2>
+    <button class="btn btn-default btn-sm" onclick="closeAI()">关闭</button>
+  </div>
+  <div class="ai-panel-body" id="aiBody">
+    <span class="text-muted">点击「AI 风险分析」开始...</span>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const _d = new Date(); const TODAY = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+
+let state = loadState() || {
+  selectedProjects: [],
+  stockData: {},
+  schedule: [],
+};
+
+// ── Persistence ──────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem('lw_schedule_v3', JSON.stringify({
+      ...state,
+      config: getConfig(),
+      project: {
+        client:   v('hClient'),
+        name:     v('hProject'),
+        deadline: v('hDeadline'),
+        target:   v('hTarget'),
+      },
+    }));
+  } catch {}
+}
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('lw_schedule_v3') || 'null');
+    if (!s) return null;
+    if (s.project) setTimeout(() => {
+      setVal('hClient',   s.project.client   || 'grape');
+      setVal('hProject',  s.project.name     || 'mango');
+      setVal('hDeadline', s.project.deadline || '2026-04-03');
+      setVal('hTarget',   s.project.target   || '550');
+    }, 0);
+    if (s.config) setTimeout(() => { setConfig(s.config); onConfigChange(); }, 0);
+    let schedule = s.schedule||[];
+    // 自愈：检测旧 bug 留下的所有行日期相同的坏数据
+    if (schedule.length > 2) {
+      const dates = new Set(schedule.map(r=>r.date));
+      if (dates.size === 1) schedule = [];
+    }
+    return { selectedProjects: s.selectedProjects||[], stockData: s.stockData||{}, schedule };
+  } catch { return null; }
+}
+
+function v(id) { return document.getElementById(id)?.value || ''; }
+function setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+
+// ── Config ───────────────────────────────
+function getConfig() {
+  return {
+    qc_rate:   pf('qcRate'),     qcDays:   pi('qcDays'),
+    sem_rate:  pf('semRate'),    semDays:  pi('semDays'),
+    pose_rate: pf('poseRate'),   poseDays: pi('poseDays'),
+    pack_rate: pf('packRate'),   pkgDays:  pi('pkgDays'),
+  };
+}
+function setConfig(c) {
+  setVal('qcRate',   (c.qc_rate   || 85).toFixed(1));  setVal('qcDays',   c.qcDays   ||1);
+  setVal('semRate',  (c.sem_rate  || 98).toFixed(1));  setVal('semDays',  c.semDays  ||3);
+  setVal('poseRate', (c.pose_rate || 98).toFixed(1));  setVal('poseDays', c.poseDays ||3);
+  setVal('packRate', (c.pack_rate || 90).toFixed(1));  setVal('pkgDays',  c.pkgDays  ||1);
+}
+function pf(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+function pi(id) { return parseInt(document.getElementById(id)?.value)   || 0; }
+
+function onConfigChange() {
+  const c = getConfig();
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalDays = c.qcDays + labelDays + c.pkgDays;
+  const yield_ = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  setText('totalDaysDisplay',   totalDays);
+  setText('overallYieldDisplay', (yield_*100).toFixed(1)+'%');
+  setText('yieldHDisplay',      (yield_*100).toFixed(1));
+  renderAll(); saveState();
+}
+function setText(id, val) { const el=document.getElementById(id); if(el) el.textContent=val; }
+
+// ── Helpers ──────────────────────────────
+function fh(h) { return (+h).toFixed(1) + ' h'; }
+function addDays(ds, n) {
+  const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function dateDiff(a, b) { return Math.round((new Date(b)-new Date(a))/86400000); }
+
+// ── Project search ───────────────────────
+let _st = null;
+document.getElementById('searchInput').addEventListener('focus', function() {
+  this.value = '';
+  hideDD();
+});
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(_st); const q = this.value.trim();
+  if (!q) { hideDD(); document.querySelectorAll('.sidebar-ctag').forEach(el=>el.classList.remove('active')); return; }
+  document.querySelectorAll('.sidebar-ctag').forEach(el =>
+    el.classList.toggle('active', el.dataset.c === q.toLowerCase()));
+  _st = setTimeout(() => doSearch(q), 300);
+});
+document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) hideDD(); });
+
+async function doSearch(q) {
+  try {
+    const r = await fetch(`/api/projects?q=${encodeURIComponent(q)}`);
+    const items = await r.json();
+    const dd = document.getElementById('searchDropdown');
+    if (!items.length) {
+      dd.innerHTML = '<div class="dropdown-empty">无匹配项目</div>';
+    } else {
+      dd.innerHTML = items.map(p => {
+        const checked = state.selectedProjects.some(s => s.id === p.id);
+        return `<label class="dropdown-item">
+          <input type="checkbox" ${checked?'checked':''} onchange="toggleProject('${esc(p.id)}','${esc(p.name)}',this.checked)">
+          ${esc(p.name)}
+        </label>`;
+      }).join('');
+    }
+    dd.style.display = 'block';
+  } catch(e) { console.error('搜索失败', e); }
+}
+function hideDD() { document.getElementById('searchDropdown').style.display = 'none'; }
+function quickFilter(keyword) {
+  // 切到排期页，自动加载该客户最新排期
+  switchPage('schedule');
+  // 等 schedInitPage 完成后（异步），找名称包含 keyword 的最新排期并加载
+  const tryLoad = () => {
+    const match = schedState.schedules.find(s =>
+      s.name.toLowerCase().includes(keyword.toLowerCase()) ||
+      (s.project_names||[]).some(n => n.toLowerCase().includes(keyword.toLowerCase()))
+    );
+    if (match) {
+      document.getElementById('schedSelect').value = match.id;
+      schedLoad(match.id);
+    } else {
+      // 没有已保存排期，则在搜索框里预填关键词方便快速搜索
+      const input = document.getElementById('searchInput');
+      if (input) { input.value = keyword; doSearch(keyword); }
+    }
+  };
+  // schedInitPage 是 async，等它完成
+  setTimeout(tryLoad, 600);
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function toggleProject(id, name, checked) {
+  if (checked) { if (!state.selectedProjects.some(p=>p.id===id)) state.selectedProjects.push({id,name}); }
+  else state.selectedProjects = state.selectedProjects.filter(p=>p.id!==id);
+  schedState.selectedProjs = state.selectedProjects.map(p => ({id:p.id, name:p.name}));
+  renderTags(); updateCount(); saveState();
+}
+function clearSelection() {
+  state.selectedProjects=[]; state.stockData={};
+  renderTags(); updateCount(); renderStock(); renderAll(); saveState();
+}
+function renderTags() {
+  const row = document.getElementById('tagsRow');
+  if (!state.selectedProjects.length) { row.innerHTML='<span class="tags-empty">尚未选择采集项目</span>'; return; }
+  row.innerHTML = state.selectedProjects.map(p =>
+    `<span class="tag">${esc(p.name)}<span class="tag-close" onclick="toggleProject('${esc(p.id)}','',false)">×</span></span>`
+  ).join('');
+}
+function updateCount() {
+  const n = state.selectedProjects.length;
+  setText('selectedCount', n ? n+'个项目' : '未选择');
+}
+
+// ── Stock fetch ──────────────────────────
+async function fetchStock(force = false) {
+  if (!state.selectedProjects.length) { alert('请先选择采集项目'); return; }
+  const btn = document.getElementById('fetchStockBtn');
+  const btn2 = document.getElementById('fetchStockCacheBtn');
+  btn.disabled=true; btn2.disabled=true; btn.textContent='拉取中…';
+  try {
+    const ids = state.selectedProjects.map(p=>p.id).join(',');
+    const url = `/api/stock?projects=${encodeURIComponent(ids)}${force ? '&force=1' : ''}`;
+    const r = await fetch(url);
+    state.stockData = await r.json();
+    // 显示拉取时间（取第一个项目的 fetched_at）
+    const firstItem = Object.values(state.stockData)[0];
+    if (firstItem && firstItem.fetched_at) {
+      setText('stockFetchedAt', '数据时间：' + firstItem.fetched_at);
+    }
+    renderStock(); renderAll(); saveState();
+  } catch(e) { alert('拉取失败: '+e.message); }
+  finally { btn.disabled=false; btn2.disabled=false; btn.textContent='拉取最新'; }
+}
+
+// ── Stock calc ───────────────────────────
+function computeStockSummary() {
+  const c = getConfig();
+  const deadline = v('hDeadline');
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalPL = c.qcDays + labelDays + c.pkgDays;
+  const qcY = c.qc_rate/100, labY = (c.sem_rate/100)*(c.pose_rate/100), pkgY = c.pack_rate/100;
+
+  let agg={packaged_h:0,labeled_h:0,lab_ing_h:0,sem_ing_h:0,pose_ing_h:0,qc_passed_h:0,qc_pending_h:0,collected_h:0};
+  for (const d of Object.values(state.stockData)) for (const k of Object.keys(agg)) agg[k]+=(d[k]||0);
+
+  const rows=[], push=(stage,raw,deliverable,days,note='')=>{
+    const arriveDate = addDays(TODAY, days);
+    const ok = arriveDate <= deadline;
+    rows.push({stage,raw,deliverable,arriveDate,ok,days,note});
+    return ok ? deliverable : 0;
+  };
+
+  let total = 0;
+  total += push('打包完成（可交付）',   agg.packaged_h,  agg.packaged_h, 0);
+  total += push('标注完成 / 待打包',    Math.max(0,agg.labeled_h-agg.packaged_h),
+                Math.max(0,agg.labeled_h-agg.packaged_h)*pkgY, c.pkgDays);
+  const inLab = Math.max(0, agg.lab_ing_h - agg.labeled_h);
+  const labNote = (agg.sem_ing_h||agg.pose_ing_h)
+    ? `语义标注中 ${agg.sem_ing_h.toFixed(1)}h，手势标注中 ${agg.pose_ing_h.toFixed(1)}h`:'';
+  total += push('标注中（语义+手势）', inLab, inLab*labY*pkgY, labelDays+c.pkgDays, labNote);
+  total += push('质检通过 / 待标注', Math.max(0,agg.qc_passed_h-agg.lab_ing_h-agg.labeled_h-agg.packaged_h),
+                Math.max(0,agg.qc_passed_h-agg.lab_ing_h-agg.labeled_h-agg.packaged_h)*labY*pkgY, labelDays+c.pkgDays);
+  total += push('待采集质检（在途）', agg.qc_pending_h, agg.qc_pending_h*qcY*labY*pkgY, totalPL);
+
+  return {rows, totalDeliverableByDeadline: total};
+}
+
+function renderStock() {
+  const tbody = document.getElementById('stockBody');
+  const tfoot = document.getElementById('stockFoot');
+  if (!Object.keys(state.stockData).length) {
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">请先关联采集项目并点击「拉取存量」</td></tr>';
+    tfoot.innerHTML=''; return;
+  }
+  const {rows,totalDeliverableByDeadline} = computeStockSummary();
+  const deadline = v('hDeadline');
+  document.getElementById('stockWarning').classList.toggle('visible',
+    Object.values(state.stockData).some(d=>d.collected_h===0));
+
+  tbody.innerHTML = rows.map(row => {
+    const raw = row.raw<.05?'<span class="text-muted">—</span>':fh(row.raw);
+    const del = row.deliverable<.05?'<span class="text-muted">—</span>'
+      :`<span class="${row.ok?'text-success':'text-danger'}">${fh(row.deliverable)}</span>`;
+    const arr = row.days===0 ? '<span class="badge badge-success">✓ 已可交付</span>'
+      : row.ok ? `<span class="badge badge-blue">${row.arriveDate}</span>`
+               : `<span class="badge badge-danger">${row.arriveDate} 超期</span>`;
+    const contrib = row.ok
+      ? `<span class="text-success">✓ ${fh(row.deliverable)}</span>`
+      : `<span class="text-danger">✗ 超期</span>`;
+    return `<tr>
+      <td>${row.stage}${row.note?`<span class="text-muted text-sm"> （${row.note}）</span>`:''}</td>
+      <td class="num">${raw}</td><td class="num">${del}</td>
+      <td class="num">${arr}</td><td class="num">${contrib}</td>
+    </tr>`;
+  }).join('');
+  tfoot.innerHTML = `<tr>
+    <td colspan="3" class="fw-600">合计（截止 ${deadline} 前可到位）</td>
+    <td class="num"></td>
+    <td class="num text-primary fw-600">${fh(totalDeliverableByDeadline)}</td>
+  </tr>`;
+}
+
+// ── Schedule ─────────────────────────────
+function computeRow(row) {
+  const c = getConfig();
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalDays = c.qcDays + labelDays + c.pkgDays;
+  const afterQC  = row.planned * (c.qc_rate/100);
+  const afterLab = afterQC * (c.sem_rate/100) * (c.pose_rate/100);
+  const afterPkg = afterLab * (c.pack_rate/100);
+  const delivDate = addDays(row.date, totalDays);
+  return {afterQC, afterLab, afterPkg, delivDate, ok: delivDate<=v('hDeadline')};
+}
+
+function addRow(dateStr, planned) {
+  const date = dateStr || getNextDate();
+  state.schedule.push({date, planned: planned??0});
+  renderScheduleTable(); saveState();
+}
+function getNextDate() {
+  if (!state.schedule.length) return TODAY;
+  return addDays(state.schedule[state.schedule.length-1].date, 1);
+}
+function fillDays() {
+  const deadline = v('hDeadline');
+  const existing = new Set(state.schedule.map(r=>r.date));
+  let d = TODAY;
+  while(d <= deadline) {
+    if(!existing.has(d)){ state.schedule.push({date:d, planned:0}); existing.add(d); }
+    d = addDays(d, 1);
+  }
+  state.schedule.sort((a,b) => a.date < b.date ? -1 : 1);
+  if(!state.schedule.length) state.schedule.push({date:TODAY, planned:0});
+  renderScheduleTable(); saveState();
+}
+function clearSchedule() { state.schedule=[]; renderScheduleTable(); saveState(); }
+function removeRow(i) { state.schedule.splice(i,1); renderScheduleTable(); saveState(); }
+function updatePlanned(i,val) { state.schedule[i].planned=parseFloat(val)||0; renderScheduleTable(); saveState(); }
+
+function renderScheduleTable() {
+  const tbody = document.getElementById('schedBody');
+  if (!state.schedule.length) {
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">暂无排期，点击「填充至截止日」后使用填入工具</td></tr>';
+    renderSummary(); return;
+  }
+  tbody.innerHTML = state.schedule.map((row,i)=>{
+    const r = computeRow(row);
+    const badge = r.ok ? '<span class="badge badge-success">✓ 有效</span>'
+                       : '<span class="badge badge-danger">✗ 超期</span>';
+    return `<tr>
+      <td>${row.date}</td>
+      <td class="num"><input class="sched-input" type="number" value="${row.planned}" min="0" step="0.5"
+        onchange="updatePlanned(${i},this.value)" oninput="updatePlanned(${i},this.value)"></td>
+      <td class="num">${row.planned>0?fh(r.afterQC):'—'}</td>
+      <td class="num">${row.planned>0?fh(r.afterLab):'—'}</td>
+      <td class="num">${row.planned>0?fh(r.afterPkg):'—'}</td>
+      <td class="num">${r.delivDate}</td>
+      <td>${badge}</td>
+      <td><button class="btn-icon-only" onclick="removeRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+  renderSummary();
+}
+
+// ── Fill tools (user-driven, no AI) ──────
+function getGapRaw() {
+  const target = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const newDel = state.schedule.reduce((s,row)=>{ const r=computeRow(row); return s+(r.ok?r.afterPkg:0); },0);
+  const c = getConfig();
+  const overallYield = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  const gap = target - stockDel - newDel;
+  const effRows = state.schedule.filter(row=>computeRow(row).ok);
+  return {gap, overallYield, effRows, stockDel, newDel, target};
+}
+
+// 填产能工具专用：gap 不计当前 planned 值，每次从存量净缺口重新分配
+function getGapForFill() {
+  const target = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const c = getConfig();
+  const overallYield = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  const gap = target - stockDel;
+  const effRows = state.schedule.filter(row=>computeRow(row).ok);
+  return {gap, overallYield, effRows, stockDel, target};
+}
+
+function fillEven() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const perDay = needed / effRows.length;
+  effRows.forEach(row => { row.planned = Math.ceil(perDay * 10) / 10; });
+  updateFillHint(`均摊：每天需采集 ${fh(perDay)}（共 ${effRows.length} 个有效天）`);
+  renderScheduleTable(); saveState();
+}
+
+function fillFrontLoad() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const n = effRows.length;
+  // 前 60% 的天分配 70% 的量，后 40% 分配 30%
+  const split = Math.ceil(n * 0.6);
+  const front = (needed * 0.7) / Math.max(1, split);
+  const back  = (needed * 0.3) / Math.max(1, n - split);
+  effRows.forEach((row, i) => { row.planned = Math.ceil((i<split?front:back)*10)/10; });
+  updateFillHint(`前置：前${split}天 ${fh(front)}/天，后${n-split}天 ${fh(back)}/天`);
+  renderScheduleTable(); saveState();
+}
+
+function fillBackLoad() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const n = effRows.length;
+  const split = Math.ceil(n * 0.4);
+  const front = (needed * 0.3) / Math.max(1, split);
+  const back  = (needed * 0.7) / Math.max(1, n - split);
+  effRows.forEach((row, i) => { row.planned = Math.ceil((i<split?front:back)*10)/10; });
+  updateFillHint(`后置：前${split}天 ${fh(front)}/天，后${n-split}天 ${fh(back)}/天`);
+  renderScheduleTable(); saveState();
+}
+
+function updateFillHint(msg) { setText('fillHint', msg); }
+
+// ── Summary ───────────────────────────────
+function renderSummary() {
+  const deadline = v('hDeadline');
+  const target   = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const newDel   = state.schedule.reduce((s,row)=>{
+    if (row.date <= TODAY) return s;  // 只计算今天之后的排期
+    const r=computeRow(row);
+    return s+(r.ok?r.afterPkg:0);
+  },0);
+  const total    = stockDel + newDel;
+  const gap      = target - total;
+  const pct      = Math.min(100, total/target*100);
+
+  // Stats cards
+  setStatCard('scTarget', fh(target), '截止 '+deadline, '');
+  setStatCard('scStock',  fh(stockDel), '截止日前到位', '');
+  setStatCard('scNew',    fh(newDel),   '排期计划贡献', '');
+  setStatCard('scGap', (gap>0?'-':'+')+fh(Math.abs(gap)),
+    gap<=0 ? '✓ 已满足目标' : '还需补充采集',
+    gap<=0 ? 'success' : gap<target*.2 ? 'warning' : 'danger');
+
+  // Progress
+  const fill = document.getElementById('progressFill');
+  if (fill) { fill.style.width=pct+'%'; fill.style.background=gap<=0?'var(--success)':pct>70?'var(--warning)':'var(--danger)'; }
+
+  // Analysis
+  setText('aTarget',   fh(target));
+  setText('aStock',    fh(stockDel));
+  setText('aNew',      fh(newDel));
+  setText('aTotal',    fh(total)+' / '+fh(target));
+  setText('aNow',      TODAY);
+  setText('aDeadline', deadline);
+
+  const daysLeft = dateDiff(TODAY, deadline);
+  const c = getConfig();
+  const last = addDays(deadline, -(c.qcDays+Math.max(c.semDays,c.poseDays)+c.pkgDays));
+  const effDays = Math.max(0, dateDiff(TODAY, last)+1);
+  setText('aDaysLeft', daysLeft+' 天');
+  setText('aEffDays',  effDays+' 天');
+
+  const overallYield = (c.qc_rate/100)*(c.sem_rate/100)*(c.pose_rate/100)*(c.pack_rate/100);
+  if (gap>0 && effDays>0) setText('aSuggest', fh(gap/overallYield/effDays)+'/天');
+  else setText('aSuggest', gap<=0?'✓ 无需额外采集':'—');
+
+  // Gap row
+  const gapEl=document.getElementById('aGap'), gapRow=document.getElementById('aGapRow');
+  if (gapEl) gapEl.textContent = (gap>0?'-':'+')+fh(Math.abs(gap));
+  if (gapRow) gapRow.className = 'analysis-row '+(gap<=0?'success':gap<target*.2?'warning':'danger');
+  const totalRow=document.getElementById('aTotalRow');
+  if (totalRow) totalRow.className = 'analysis-row total '+(gap<=0?'success':gap<target*.2?'warning':'danger');
+
+  // Countdown
+  const cd = document.getElementById('hCountdown');
+  if (cd) {
+    cd.textContent = daysLeft>=0 ? `还有 ${daysLeft} 天` : '已超期';
+    cd.className = 'countdown-badge '+(daysLeft<=3?'bad':daysLeft<=7?'warn':'ok');
+  }
+
+  // Alert button visibility
+  const show = gap>0;
+  ['aiAlertBtn','sidebarAlertBtn'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=show?'':'none';
+  });
+}
+
+function setStatCard(id, value, sub, cls) {
+  const el = document.getElementById(id); if (!el) return;
+  el.querySelector('.stat-value').textContent = value;
+  el.querySelector('.stat-sub').textContent   = sub;
+  el.className = 'stat ' + cls;
+}
+
+// ── Header change handlers ────────────────
+['hClient','hProject','hDeadline','hTarget'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', ()=>{ renderAll(); saveState(); })
+);
+
+// ── Render all ───────────────────────────
+function renderAll() { renderTags(); updateCount(); renderStock(); renderScheduleTable(); }
+
+// ── Export CSV ───────────────────────────
+function exportCSV() {
+  const lines = ['日期,采集计划(h),采集质检通过(h),标注完成(h),打包完成(h),可交付日,状态'];
+  state.schedule.forEach(row=>{
+    const r=computeRow(row);
+    lines.push([row.date,row.planned,r.afterQC.toFixed(2),r.afterLab.toFixed(2),
+                r.afterPkg.toFixed(2),r.delivDate,r.ok?'有效':'超期'].join(','));
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'}));
+  a.download=`排期_${v('hProject')}_${TODAY}.csv`; a.click();
+}
+
+// ── 采集统计 ──────────────────────────────
+let _collData = null;
+
+async function loadCollectors() {
+  const d = document.getElementById('collDate').value;
+  if (!d) return;
+  document.getElementById('collStatus').textContent = '加载中…';
+  document.getElementById('collSummary').innerHTML = '';
+  document.getElementById('collVendors').innerHTML = '';
+  try {
+    const res = await fetch('/api/collectors?date=' + d);
+    const data = await res.json();
+    _collData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderCollSummary(data);
+    renderCollVendors(data.vendors);
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderCollSummary(data) {
+  const items = [
+    { label:'活跃采集员', value: data.total_persons, sub: data.total_vendors + ' 家供应商', accent: true },
+    { label:'采集总时长', value: data.total_collect_h.toFixed(1) + 'h', sub: '原始视频' },
+    { label:'质检通过时长', value: data.total_qc_h.toFixed(1) + 'h', sub: '可流转数据' },
+    { label:'整体通过率', value: data.overall_qc_rate + '%', sub: '质检通过 / 采集' },
+    { label:'人均采集', value: data.total_persons > 0 ? (data.total_collect_h / data.total_persons).toFixed(1) + 'h' : '-', sub: '今日平均产出' },
+  ];
+  document.getElementById('collSummary').innerHTML = items.map(it =>
+    `<div class="coll-stat${it.accent?' accent':''}">
+      <div class="coll-stat-label">${it.label}</div>
+      <div class="coll-stat-value">${it.value}</div>
+      <div class="coll-stat-sub">${it.sub}</div>
+    </div>`
+  ).join('');
+}
+
+function renderCollVendors(vendors) {
+  if (!vendors.length) {
+    document.getElementById('collVendors').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">暂无数据</div>';
+    return;
+  }
+  document.getElementById('collVendors').innerHTML = vendors.map((v, vi) => `
+    <div class="coll-vendor-card" id="vc${vi}">
+      <div class="coll-vendor-header" onclick="toggleVendor(${vi})">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="coll-vendor-name">${v.vendor}</span>
+          <span class="coll-vendor-badge">${v.count} 人</span>
+        </div>
+        <div class="coll-vendor-meta">
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.total_collect_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">总采集</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.total_qc_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">质检通过</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.qc_rate}%</div>
+            <div class="coll-vendor-stat-lbl">通过率</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.avg_collect_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">人均</div>
+          </div>
+          <span class="coll-chevron">▶</span>
+        </div>
+      </div>
+      <div class="coll-persons">
+        <table class="coll-table">
+          <thead><tr>
+            <th>采集员</th>
+            <th>累计采集时长</th><th>累计质检通过时长</th><th>累计质检通过率</th>
+            <th>当日采集数</th><th>当日采集时长</th><th>当日质检通过时长</th><th>当日质检通过率</th>
+            <th>待质检时长</th><th>推断在线</th><th>活跃时段</th>
+          </tr></thead>
+          <tbody>
+            ${v.persons.map(p => `<tr>
+              <td style="color:#e2e8f0;font-weight:500">${p.producer}</td>
+              <td>${p.total_collect_h.toFixed(1)}h</td>
+              <td>${p.total_qc_h.toFixed(1)}h</td>
+              <td>
+                <div class="coll-rate-bar">
+                  <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.total_qc_rate,100)}%"></div></div>
+                  <span>${p.total_qc_rate}%</span>
+                </div>
+              </td>
+              <td>${p.collect_cases}</td>
+              <td>${p.collect_h.toFixed(2)}h</td>
+              <td>${p.qc_h.toFixed(2)}h</td>
+              <td>
+                <div class="coll-rate-bar">
+                  <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+                  <span>${p.qc_rate}%</span>
+                </div>
+              </td>
+              <td>${p.pending_qc_h.toFixed(1)}h</td>
+              <td>${p.online_h.toFixed(2)}h</td>
+              <td><span class="coll-tag-time">${p.first_seen} – ${p.last_seen}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join('');
+}
+
+function exportCollectorsExcel() {
+  if (!_collData || !_collData.vendors || !_collData.vendors.length) { alert('暂无数据'); return; }
+  const date = document.getElementById('collDate').value;
+  const headers = ['供应商','采集员','累计采集时长(h)','累计质检通过时长(h)','累计质检通过率(%)',
+    '当日采集数','当日采集时长(h)','当日质检通过时长(h)','当日质检通过率(%)',
+    '待质检时长(h)','推断在线(h)','活跃时段'];
+  const rows = [];
+  for (const v of _collData.vendors) {
+    for (const p of v.persons) {
+      rows.push([
+        v.vendor, p.producer,
+        p.total_collect_h, p.total_qc_h, p.total_qc_rate,
+        p.collect_cases, p.collect_h, p.qc_h, p.qc_rate,
+        p.pending_qc_h, p.online_h, `${p.first_seen} – ${p.last_seen}`
+      ]);
+    }
+  }
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '采集详情');
+  XLSX.writeFile(wb, `采集详情_${date}.xlsx`);
+}
+
+function toggleVendor(vi) {
+  document.getElementById('vc' + vi).classList.toggle('open');
+}
+
+// ── AI (Analysis only) ───────────────────
+const SYSTEM_PROMPT = `你是一个数据采集排期专家，帮助用户管理 egocentric 视频数据采集项目的交付计划。
+流水线：采集 → 采集质检 → [语义标注 ‖ 手势标注（并行）] → 标注完成 → 打包 → 交付
+核心规则：语义和手势标注并行，两个都完成才算标注完成。标注周期=max(语义天数,手势天数)。
+你只做分析，不做决策。用中文回答，直接给出风险点和可行建议。`;
+
+function buildContext() {
+  const deadline=v('hDeadline'), target=parseFloat(v('hTarget'))||0, c=getConfig();
+  const labelDays=Math.max(c.semDays,c.poseDays);
+  const last=addDays(deadline,-(c.qcDays+labelDays+c.pkgDays));
+  const effDays=Math.max(0,dateDiff(TODAY,last)+1);
+  const stockDel=Object.keys(state.stockData).length?computeStockSummary().totalDeliverableByDeadline:0;
+  const newDel=state.schedule.reduce((s,row)=>{const r=computeRow(row);return s+(r.ok?r.afterPkg:0);},0);
+  const overallYield=(1-c.qcLoss)*(1-c.semLoss)*(1-c.poseLoss)*(1-c.pkgLoss);
+  return {
+    today:TODAY, deadline, target, client:v('hClient'), project:v('hProject'),
+    pipeline:{qcDays:c.qcDays,semDays:c.semDays,poseDays:c.poseDays,pkgDays:c.pkgDays,
+              qcLoss:(c.qcLoss*100).toFixed(1)+'%',semLoss:(c.semLoss*100).toFixed(1)+'%',
+              poseLoss:(c.poseLoss*100).toFixed(1)+'%',pkgLoss:(c.pkgLoss*100).toFixed(1)+'%',
+              labelDays, totalDays:c.qcDays+labelDays+c.pkgDays,
+              overallYield:(overallYield*100).toFixed(1)+'%'},
+    stock:{totalDeliverableByDeadline:stockDel.toFixed(1)},
+    schedule:state.schedule.map(row=>{const r=computeRow(row);return{date:row.date,planned:row.planned,deliverable:r.afterPkg.toFixed(2),ok:r.ok};}),
+    totalDeliverable:(stockDel+newDel).toFixed(1),
+    gap:(target-stockDel-newDel).toFixed(1),
+    effDays, lastValidDate:last,
+    suggestedDaily: effDays>0?(((target-stockDel-newDel)/overallYield)/effDays).toFixed(1)+'h/天':'—',
+  };
+}
+
+function openAI(title) {
+  setText('aiTitle', title);
+  document.getElementById('aiOverlay').classList.add('open');
+  document.getElementById('aiPanel').classList.add('open');
+}
+function closeAI() {
+  document.getElementById('aiOverlay').classList.remove('open');
+  document.getElementById('aiPanel').classList.remove('open');
+}
+
+async function callClaude(messages) {
+  const body=document.getElementById('aiBody');
+  body.innerHTML='<span class="text-muted ai-loading">分析中</span>';
+  try {
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude',messages,stream:true,max_tokens:1500})});
+    const reader=resp.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){
+      const{done,value}=await reader.read(); if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const parts=buf.split('\n'); buf=parts.pop();
+      let text='';
+      for(const line of parts){
+        if(!line.startsWith('data:'))continue;
+        const d=line.slice(5).trim(); if(d==='[DONE]')break;
+        try{const j=JSON.parse(d);text+=(j.choices?.[0]?.delta?.content||'');}catch{}
+      }
+      if(text){body.textContent=(body.textContent||'')+text;}
+    }
+  } catch(e){ body.textContent='请求失败: '+e.message; }
+}
+
+async function aiAnalyze() {
+  openAI('🔍 AI 风险分析');
+  const ctx=buildContext();
+  const msg=`项目数据如下：\n\`\`\`json\n${JSON.stringify(ctx,null,2)}\n\`\`\`\n\n请分析：
+1. 按当前排期，能否在截止日前完成目标（${ctx.target}h）？
+2. 主要风险点是什么？
+3. 如果有缺口，每天需要达到多少采集产能才能补足？
+4. 流水线中哪个环节最可能成为瓶颈（特别是语义/手势标注并行的情况）？`;
+  await callClaude([{role:'system',content:SYSTEM_PROMPT},{role:'user',content:msg}]);
+}
+
+async function aiAlert() {
+  openAI('⚠️ AI 补救方案');
+  const ctx=buildContext();
+  const msg=`当前缺口 ${ctx.gap}h，有效采集天还剩 ${ctx.effDays} 天，截止 ${ctx.deadline}。\n\`\`\`json\n${JSON.stringify(ctx,null,2)}\n\`\`\`\n\n请给出具体补救方案：需要增加多少产能、是否需要联系客户沟通延期、哪些风险需要优先处理。`;
+  await callClaude([{role:'system',content:SYSTEM_PROMPT},{role:'user',content:msg}]);
+}
+
+// ── 全盘数据 ───────────────────────────────
+let _ovNewProjects = [];   // 检测到的新项目列表
+let _ovAfterModal  = null; // 弹窗关闭后的回调
+
+async function ovInitPage() {
+  // 检查是否已有报告
+  try {
+    const r = await fetch('/api/overview/status');
+    const d = await r.json();
+    if (d.has_report) {
+      const ts = new Date(d.mtime * 1000);
+      document.getElementById('ovMeta').textContent =
+        `上次报告: ${ts.toLocaleString()}`;
+      document.getElementById('ovViewBtn').style.display = '';
+    }
+  } catch(e) {}
+}
+
+function ovViewReport() {
+  document.getElementById('ovEmpty').style.display       = 'none';
+  document.getElementById('ovReportWrap').style.display  = '';
+  document.getElementById('ovIframe').src = '/api/overview/report?t=' + Date.now();
+}
+
+async function ovStartPull() {
+  // 禁用按钮
+  document.getElementById('ovPullBtn').disabled = true;
+  document.getElementById('ovPullBtn').textContent = '检测中…';
+
+  try {
+    const r = await fetch('/api/overview/new-projects');
+    const newProjects = await r.json();
+    if (newProjects.length > 0) {
+      _ovNewProjects = newProjects;
+      _ovAfterModal = ovRunPipeline;
+      ovShowModal(newProjects);
+    } else {
+      await ovRunPipeline();
+    }
+  } catch(e) {
+    ovLog('ERROR: ' + e.message);
+    document.getElementById('ovPullBtn').disabled = false;
+    document.getElementById('ovPullBtn').textContent = '拉取数据';
+  }
+}
+
+function ovShowModal(projects) {
+  document.getElementById('ovModalCount').textContent = `共 ${projects.length} 个项目`;
+  const body = document.getElementById('ovModalBody');
+  body.innerHTML = projects.map((p, i) => `
+    <div class="ov-np-item">
+      <input type="checkbox" id="ovnp${i}" checked style="margin-top:3px;accent-color:#6366f1">
+      <div class="ov-np-info">
+        <div class="ov-np-name">${p.name || p.id}</div>
+        <div class="ov-np-cnt">${p.case_count} 条案例</div>
+        <div class="ov-np-fields">
+          <select class="ov-np-sel" id="ovnp_form${i}">
+            <option value="">采集形式</option>
+            <option>自然手</option><option>夹爪</option><option>机械臂</option>
+          </select>
+          <select class="ov-np-sel" id="ovnp_scheme${i}">
+            <option value="">采集方案</option>
+            <option>Pico+Tracker</option><option>Pico+Dji</option><option>Pico</option>
+          </select>
+          <select class="ov-np-sel" id="ovnp_region${i}">
+            <option value="">地域</option>
+            <option>国内</option><option>海外</option>
+          </select>
+          <select class="ov-np-sel" id="ovnp_ver${i}">
+            <option value="">标注版本</option>
+            <option>v4</option><option>v5</option><option>v6</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#64748b;white-space:nowrap;padding-top:2px">${p.id.slice(0,8)}…</div>
+    </div>`).join('');
+  document.getElementById('ovModal').style.display = 'flex';
+}
+
+async function ovModalConfirm() {
+  const toAdd = [];
+  const toReject = [];
+  _ovNewProjects.forEach((p, i) => {
+    const cb = document.getElementById(`ovnp${i}`);
+    if (cb && cb.checked) {
+      toAdd.push({
+        id:       p.id,
+        name:     p.name || '',
+        form:     document.getElementById(`ovnp_form${i}`).value,
+        scheme:   document.getElementById(`ovnp_scheme${i}`).value,
+        region:   document.getElementById(`ovnp_region${i}`).value,
+        label_ver: document.getElementById(`ovnp_ver${i}`).value,
+      });
+    } else {
+      toReject.push(p.id);
+    }
+  });
+  document.getElementById('ovModal').style.display = 'none';
+  if (toAdd.length > 0) {
+    ovLogLine(`添加 ${toAdd.length} 个新项目到 production_list.xlsx…`);
+    await fetch('/api/overview/add-projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(toAdd),
+    });
+    ovLogLine(`✓ 已添加`);
+  }
+  if (toReject.length > 0) {
+    await fetch('/api/overview/reject-projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(toReject),
+    });
+  }
+  if (_ovAfterModal) await _ovAfterModal();
+}
+
+async function ovModalSkip() {
+  document.getElementById('ovModal').style.display = 'none';
+  // 全部跳过，记住这批，下次不再提示
+  const ids = _ovNewProjects.map(p => p.id);
+  if (ids.length > 0) {
+    await fetch('/api/overview/reject-projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(ids),
+    });
+  }
+  if (_ovAfterModal) _ovAfterModal();
+}
+
+async function ovRunPipeline() {
+  const log = document.getElementById('ovLog');
+  log.style.display = '';
+  log.textContent = '';
+  document.getElementById('ovEmpty').style.display      = 'none';
+  document.getElementById('ovReportWrap').style.display = 'none';
+  document.getElementById('ovPullBtn').textContent = '运行中…';
+
+  const es = new EventSource('/api/overview/run');
+  es.onmessage = e => {
+    const msg = e.data;
+    ovLogLine(msg);
+    if (msg.startsWith('DONE:')) {
+      es.close();
+      document.getElementById('ovPullBtn').disabled = false;
+      document.getElementById('ovPullBtn').textContent = '拉取数据';
+      if (msg === 'DONE:ok') {
+        ovLogLine('');
+        ovLogLine('✅ 报告已生成，加载中…');
+        setTimeout(() => {
+          document.getElementById('ovViewBtn').style.display = '';
+          document.getElementById('ovMeta').textContent = `上次报告: ${new Date().toLocaleString()}`;
+          ovViewReport();
+        }, 600);
+      }
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    ovLogLine('ERROR: 连接中断');
+    document.getElementById('ovPullBtn').disabled = false;
+    document.getElementById('ovPullBtn').textContent = '拉取数据';
+  };
+}
+
+function ovLogLine(msg) {
+  const log = document.getElementById('ovLog');
+  log.textContent += msg + '\n';
+  log.scrollTop = log.scrollHeight;
+}
+
+function ovLog(msg) { ovLogLine(msg); }
+
+// ── Page switching ────────────────────────
+function switchPage(page) {
+  document.getElementById('mainTopbar').style.display     = page === 'schedule'   ? '' : 'none';
+  document.getElementById('pageSchedule').style.display   = page === 'schedule'   ? '' : 'none';
+  document.getElementById('pageHistory').style.display    = page === 'history'    ? '' : 'none';
+  document.getElementById('pageCollectors').style.display = page === 'collectors' ? '' : 'none';
+  document.getElementById('pageTrend').style.display      = page === 'trend'      ? '' : 'none';
+  document.getElementById('pageOverview').style.display   = page === 'overview'   ? '' : 'none';
+  document.querySelectorAll('.sidebar-item[data-page]').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page));
+  if (page === 'schedule') {
+    schedInitPage();
+  }
+  if (page === 'overview') {
+    ovInitPage();
+  }
+  if (page === 'trend') {
+    loadTrend();
+  }
+  if (page === 'collectors') {
+    if (!document.getElementById('collDate').value) {
+      document.getElementById('collDate').value = new Date().toISOString().slice(0,10);
+    }
+    loadCollectors();
+  }
+  if (page === 'history') {
+    // 默认近 30 天
+    if (!document.getElementById('hStart').value) {
+      const pad = n => String(n).padStart(2,'0');
+      const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const today = new Date();
+      const end = new Date(today); end.setDate(end.getDate()-1);
+      const start = new Date(today); start.setDate(start.getDate()-30);
+      document.getElementById('hStart').value = fmt(start);
+      document.getElementById('hEnd').value   = fmt(end);
+    }
+    if (state.selectedProjects.length) loadHistory();
+    else document.getElementById('historyEmpty').style.display = '';
+  }
+}
+
+// ── History chart ─────────────────────────
+let _histChart = null;
+
+async function loadHistory() {
+  const ids = state.selectedProjects.map(p => p.id).join(',');
+  if (!ids) { document.getElementById('historyEmpty').textContent = '请先在排期看板中选择项目'; document.getElementById('historyEmpty').style.display=''; return; }
+  const start = document.getElementById('hStart').value;
+  const end   = document.getElementById('hEnd').value;
+  if (!start || !end) { alert('请选择日期范围'); return; }
+  document.getElementById('historyNote').textContent = '加载中…';
+  try {
+    const r = await fetch(`/api/history?projects=${encodeURIComponent(ids)}&start=${start}&end=${end}`);
+    const data = await r.json();
+    document.getElementById('historyNote').textContent = `共 ${data.length} 天`;
+    renderHistory(data);
+  } catch(e) {
+    document.getElementById('historyNote').textContent = '查询失败，请检查 VPN';
+  }
+}
+
+function renderHistory(data) {
+  const DOW = ['日','一','二','三','四','五','六'];
+  const labels    = data.map(r => r.date.slice(5)); // MM-DD
+  const collected = data.map(r => +r.collected.toFixed(1));
+  const qcPassed  = data.map(r => +r.qc_passed.toFixed(1));
+  const labeled   = data.map(r => +r.labeled.toFixed(1));
+
+  // Chart
+  document.getElementById('historyEmpty').style.display = 'none';
+  const canvas = document.getElementById('historyChart');
+  canvas.style.display = '';
+  if (_histChart) _histChart.destroy();
+  _histChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: '采集完成 (h)', data: collected, borderColor: '#1677ff', backgroundColor: 'rgba(22,119,255,.06)', tension: 0.3, pointRadius: 3, fill: false },
+        { label: '质检通过 (h)', data: qcPassed,  borderColor: '#52c41a', backgroundColor: 'rgba(82,196,26,.06)',  tension: 0.3, pointRadius: 3, fill: false },
+        { label: '标注完成 (h)', data: labeled,   borderColor: '#faad14', backgroundColor: 'rgba(250,173,20,.06)', tension: 0.3, pointRadius: 3, fill: false },
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 30, font: { size: 11 } } },
+        y: { beginAtZero: true, title: { display: true, text: 'h' } }
+      }
+    }
+  });
+
+  // Table
+  let html = `<table class="ant-table"><thead><tr>
+    <th>日期</th><th>周</th>
+    <th class="num">采集完成 (h)</th><th class="num">质检通过 (h)</th><th class="num">标注完成 (h)</th>
+  </tr></thead><tbody>`;
+  data.forEach(r => {
+    const d = new Date(r.date + 'T00:00:00Z');
+    const sun = d.getUTCDay() === 0;
+    const style = sun ? ' style="color:rgba(0,0,0,.3)"' : '';
+    const bg    = sun ? ' style="background:#fafafa"' : '';
+    html += `<tr${bg}><td${style}>${r.date}</td><td${style}>周${DOW[d.getUTCDay()]}</td>
+      <td class="num">${r.collected > 0 ? fh(r.collected) : '—'}</td>
+      <td class="num">${r.qc_passed  > 0 ? fh(r.qc_passed)  : '—'}</td>
+      <td class="num">${r.labeled    > 0 ? fh(r.labeled)    : '—'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('historyTable').innerHTML = html;
+  document.getElementById('historyTableCard').style.display = '';
+}
+
+// ── Trend chart ───────────────────────────
+let _trendChart = null;
+let _trendData  = null;
+
+// IQR 离群过滤：超过 Q3 + 3*IQR 的天置为 null
+function filterOutliers(data, metric) {
+  const sorted = data.map(r => metric === 'hours' ? r.hours : r.cases)
+    .filter(v => v > 0).sort((a, b) => a - b);
+  if (sorted.length < 4) return { filtered: data, removed: 0 };
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const upper = q3 + 3 * (q3 - q1);
+  let removed = 0;
+  const filtered = data.map(r => {
+    const v = metric === 'hours' ? r.hours : r.cases;
+    if (v > upper) { removed++; return { ...r, hours: null, cases: null }; }
+    return r;
+  });
+  return { filtered, removed };
+}
+
+async function loadTrend() {
+  const days   = document.getElementById('trendDays').value;
+  const status = document.getElementById('trendStatus');
+  status.textContent = '加载中…';
+  try {
+    const r = await fetch(`/api/overview/daily-collect?days=${days}`);
+    _trendData = await r.json();
+    renderTrend();
+  } catch(e) {
+    status.textContent = '查询失败，请检查 VPN';
+  }
+}
+
+function renderTrend() {
+  if (!_trendData || !_trendData.length) return;
+  const metric = document.getElementById('trendMetric').value;
+  const DOW    = ['日','一','二','三','四','五','六'];
+  const unit   = metric === 'hours' ? 'h' : '条';
+
+  const { filtered, removed } = filterOutliers(_trendData, metric);
+  document.getElementById('trendStatus').textContent =
+    `共 ${_trendData.length} 天${removed ? `，已过滤 ${removed} 个异常天` : ''}`;
+
+  const labels = filtered.map(r => r.date.slice(5));
+  const vals   = filtered.map(r => metric === 'hours' ? r.hours : r.cases);
+
+  // 汇总（仅统计未被过滤的天）
+  const nonNull  = vals.filter(v => v != null);
+  const nonZero  = nonNull.filter(v => v > 0);
+  const total    = nonNull.reduce((a, b) => a + (b || 0), 0);
+  const avgDay   = nonZero.length ? (total / nonZero.length) : 0;
+  const peak     = Math.max(...nonNull);
+  const peakIdx  = vals.indexOf(peak);
+  document.getElementById('trendSummary').innerHTML = [
+    ['总量',    `${metric==='hours'?total.toFixed(1):total} ${unit}`],
+    ['工作日均', `${metric==='hours'?avgDay.toFixed(1):avgDay.toFixed(0)} ${unit}`],
+    ['峰值',    `${metric==='hours'?peak.toFixed(1):peak} ${unit}（${filtered[peakIdx]?.date||''}）`],
+    ['有产出天', `${nonZero.length} 天`],
+  ].map(([k,v])=>`<div class="card" style="padding:12px 18px;min-width:120px">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${k}</div>
+    <div style="font-size:18px;font-weight:600">${v}</div>
+  </div>`).join('');
+
+  // Chart
+  const canvas = document.getElementById('trendChart');
+  if (_trendChart) _trendChart.destroy();
+  const bgColors = filtered.map(r => new Date(r.date+'T00:00:00Z').getUTCDay()===0
+    ? 'rgba(99,102,241,.2)' : 'rgba(22,119,255,.6)');
+  _trendChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{
+      label: `每日采集完成 (${unit})`,
+      data: vals,
+      backgroundColor: bgColors,
+      borderWidth: 0,
+    }]},
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.parsed.y != null
+              ? `${ctx.parsed.y.toFixed(metric==='hours'?1:0)} ${unit}`
+              : '（已过滤）'
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 20, font: { size: 11 } }, grid: { color: 'rgba(99,102,241,.1)' } },
+        y: { beginAtZero: true, title: { display: true, text: unit },
+             grid: { color: 'rgba(99,102,241,.1)' } }
+      }
+    }
+  });
+
+  // Table
+  let html = `<table class="ant-table"><thead><tr>
+    <th>日期</th><th>周</th><th class="num">采集完成 (${unit})</th>
+  </tr></thead><tbody>`;
+  filtered.slice().reverse().forEach(r => {
+    const d = new Date(r.date + 'T00:00:00Z');
+    const sun = d.getUTCDay() === 0;
+    const dimStyle = sun ? ' style="color:#475569"' : '';
+    const val = metric === 'hours' ? r.hours : r.cases;
+    html += `<tr><td${dimStyle}>${r.date}</td><td${dimStyle}>周${DOW[d.getUTCDay()]}</td>
+      <td class="num">${val != null && val > 0 ? (metric==='hours'?val.toFixed(1):val) : '—'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('trendTable').innerHTML = html;
+  document.getElementById('trendTableCard').style.display = '';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  排期状态（必须在 init 块之前声明，避免 TDZ 错误）
+// ══════════════════════════════════════════════════════════════
+const schedState = {
+  schedules:    [],
+  current:      null,
+  currentVer:   null,
+  selectedProjs: [],
+  projSearchTimer: null,
+  collectEff:   1.5,    // 采集人效 h/人/天（全局，不分供应商）
+  vendors:      [],     // 已选供应商列表 [{name}]
+  allVendors:   [],     // 从数据库拉取的全量供应商名称列表
+};
+
+// ── Init ─────────────────────────────────
+onConfigChange();
+renderAll();
+if (!state.schedule.length) fillDays();
+switchPage('schedule');
+
+
+// ══════════════════════════════════════════════════════════════
+//  排期管理（合并版）
+// ══════════════════════════════════════════════════════════════
+
+// ── 供应商配置 ───────────────────────────────────────────────
+function schedRenderVendors() {
+  const el = document.getElementById('vendorConfigList');
+  if (!el) return;
+  const effRow = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(99,102,241,.15)">
+      <span style="font-size:13px;color:#94a3b8">采集人效</span>
+      <input class="input" type="number" value="${schedState.collectEff}" min="0.1" step="0.1"
+        style="width:64px;height:28px;font-size:13px;text-align:center"
+        oninput="schedState.collectEff=parseFloat(this.value)||1.5;renderScheduleTable()">
+      <span style="font-size:12px;color:#64748b">h / 人 / 天</span>
+    </div>`;
+  const chips = schedState.allVendors.length
+    ? schedState.allVendors.map(name => {
+        const checked = schedState.vendors.some(v => v.name === name);
+        return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 10px;border-radius:20px;background:${checked?'rgba(99,102,241,.25)':'rgba(255,255,255,.04)'};border:1px solid ${checked?'rgba(99,102,241,.5)':'rgba(255,255,255,.08)'};font-size:12px;white-space:nowrap">
+          <input type="checkbox" ${checked?'checked':''} style="accent-color:#6366f1" onchange="schedToggleVendor('${name.replace(/'/g,"\\'")}',this.checked)">
+          ${name}
+        </label>`;
+      }).join('')
+    : '<span style="font-size:12px;color:#64748b">加载中...</span>';
+  el.innerHTML = effRow + `<div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>`;
+  schedRebuildTableHead();
+}
+
+function schedToggleVendor(name, checked) {
+  if (checked) {
+    if (!schedState.vendors.some(v => v.name === name)) {
+      schedState.vendors.push({ name });
+      state.schedule.forEach(d => {
+        if (!d.vendor_people) d.vendor_people = [];
+        d.vendor_people.push(0);
+      });
+    }
+  } else {
+    const idx = schedState.vendors.findIndex(v => v.name === name);
+    if (idx >= 0) {
+      schedState.vendors.splice(idx, 1);
+      state.schedule.forEach(d => { if (d.vendor_people) d.vendor_people.splice(idx, 1); });
+    }
+  }
+  schedRenderVendors();
+  renderScheduleTable();
+}
+
+function schedRebuildTableHead() {
+  const thead = document.getElementById('schedThead');
+  if (!thead) return;
+  const vendorCols = schedState.vendors.map(v =>
+    `<th class="num" style="color:#38bdf8">${v.name}<br><span style="font-size:10px;color:#475569">人力</span></th>`
+  ).join('');
+  thead.innerHTML = `<tr>
+    <th>日期</th>
+    ${vendorCols}
+    <th class="num" style="color:#38bdf8">每日采集(h)</th>
+    <th class="num" style="color:#34d399">累计采集(h)</th>
+    <th class="num" style="color:#a78bfa">计划标注(h)</th>
+    <th class="num" style="color:#f59e0b">标注完成(h)</th>
+    <th class="num" style="color:#f59e0b">累计标注(h)</th>
+    <th class="num" style="color:#ec4899">打包完成(h)</th>
+    <th class="num" style="color:#ec4899">累计打包(h)</th>
+    <th>状态</th>
+    <th style="width:40px"></th>
+  </tr>`;
+}
+
+// 计算某行的合计采集h = Σ人力 × 全局人效
+function schedCalcCollect(row) {
+  const vp = row.vendor_people || [];
+  const total = vp.reduce((s, n) => s + (parseFloat(n) || 0), 0);
+  return total * (schedState.collectEff || 1.5);
+}
+
+// ── Tab 切换 ────────────────────────────────────────────────
+function schedSwitchTab(tab) {
+  ['plan','actual','stock'].forEach(t => {
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).style.display = t === tab ? '' : 'none';
+    const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (t === tab) {
+      btn.className = 'btn btn-sm';
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+    } else {
+      btn.className = 'btn btn-default btn-sm';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.border = '';
+    }
+  });
+}
+
+// ── 流水线配置折叠 ──────────────────────────────────────────
+function togglePipeline() {
+  const body = document.getElementById('pipelineBody');
+  const icon = document.getElementById('pipelineToggleIcon');
+  const open = body.style.display === '';
+  body.style.display = open ? 'none' : '';
+  icon.textContent   = open ? '▼ 展开' : '▲ 收起';
+}
+
+// ── 初始化排期页 ────────────────────────────────────────────
+async function schedInitPage() {
+  await schedLoadAllVendors();
+  await schedRefreshList();
+}
+
+async function schedLoadAllVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    schedState.allVendors = await res.json();
+  } catch(e) {
+    schedState.allVendors = [];
+  }
+  schedRenderVendors();
+}
+
+async function schedRefreshList() {
+  const res = await fetch('/api/schedules');
+  schedState.schedules = await res.json();
+  const sel = document.getElementById('schedSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— 选择已保存排期 —</option>' +
+    schedState.schedules.map(s => `<option value="${s.id}">${s.name}（目标${s.target_h}h）</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+// ── 加载排期 ────────────────────────────────────────────────
+async function schedLoad(id) {
+  if (!id) {
+    schedState.current = null;
+    schedState.currentVer = null;
+    schedState.selectedProjs = [];
+    document.getElementById('schedVerSelect').style.display = 'none';
+    document.getElementById('schedDeleteBtn').style.display = 'none';
+    document.getElementById('schedSavedAt').textContent = '';
+    renderTags(); updateCount();
+    return;
+  }
+  const res = await fetch('/api/schedules/' + id);
+  const s   = await res.json();
+  schedState.current = s;
+  const ver = s.versions.find(v => v.v === s.current_version);
+  schedApplyVersion(s, ver);
+}
+
+function schedApplyVersion(s, ver) {
+  schedState.currentVer = ver;
+  document.getElementById('schedDeleteBtn').style.display = '';
+  document.getElementById('schedSavedAt').textContent = '上次保存：' + ver.saved_at.slice(0,16);
+
+  // 恢复交付项目名称
+  document.getElementById('deliveryProject').value = s.delivery_project || '';
+
+  // 恢复供应商配置
+  const params = ver.params || {};
+  if (params.collectEff) schedState.collectEff = params.collectEff;
+  if (params.vendors && params.vendors.length) {
+    schedState.vendors = params.vendors.map(v => ({ name: v.name }));
+  } else {
+    schedState.vendors = [];
+  }
+  schedRenderVendors();
+
+  // 关联项目
+  schedState.selectedProjs = (s.project_ids||[]).map((id,i) => ({id, name:(s.project_names||[])[i]||id}));
+  state.selectedProjects = schedState.selectedProjs.map(p => ({id:p.id, name:p.name}));
+  renderTags(); updateCount();
+
+  // 每日排期
+  state.schedule = (ver.days||[]).map(d => ({
+    date:           d.date,
+    planned:        d.plan_collect_h || 0,  // 兼容旧数据
+    plan_label_h:   d.plan_label_h   || 0,
+    vendor_people:  d.vendor_people  || schedState.vendors.map(() => 0),
+  }));
+
+  if (ver.target_h)   setVal('hTarget',   ver.target_h);
+  if (ver.start_date) setVal('hDeadline',  ver.start_date);
+
+  renderAll();
+  saveState();
+}
+
+function schedLoadVersion(v) {
+  const s = schedState.current;
+  if (!s) return;
+  const ver = s.versions.find(x => x.v === parseInt(v));
+  if (ver) schedApplyVersion(s, ver);
+}
+
+// ── 新建 ────────────────────────────────────────────────────
+function schedNew() {
+  schedState.current = null;
+  schedState.currentVer = null;
+  // 继承上次关联的项目（取最近一个排期的项目）
+  const lastSched = schedState.schedules[0];
+  const inheritProjs = lastSched
+    ? (lastSched.project_ids||[]).map((id,i) => ({id, name:(lastSched.project_names||[])[i]||id}))
+    : [];
+  schedState.selectedProjs = inheritProjs;
+  schedState.vendors = [];
+  schedState.collectEff = 1.5;
+  document.getElementById('deliveryProject').value = '';
+  document.getElementById('schedSelect').value = '';
+  document.getElementById('schedDeleteBtn').style.display = 'none';
+  document.getElementById('schedSavedAt').textContent = '';
+  state.selectedProjects = inheritProjs.map(p => ({id:p.id, name:p.name}));
+  state.schedule = [];
+  schedRenderVendors();
+  renderTags(); updateCount(); renderScheduleTable();
+}
+
+// ── 保存 ────────────────────────────────────────────────────
+async function schedSave() {
+  const name    = prompt('排期名称', schedState.current ? schedState.current.name : '新排期');
+  if (!name) return;
+  const deliveryProject = document.getElementById('deliveryProject').value.trim();
+  if (!deliveryProject) { alert('请填写交付项目名称'); return; }
+  const target  = parseFloat(document.getElementById('hTarget').value) || 0;
+  const deadline= document.getElementById('hDeadline').value;
+
+  const cfg = getConfig();
+  cfg.collectEff = schedState.collectEff;
+  cfg.vendors = schedState.vendors.map(v => ({ name: v.name }));
+
+  const body = {
+    name,
+    delivery_project: deliveryProject,
+    target_h:      target,
+    start_date:    deadline,
+    project_ids:   state.selectedProjects.map(p => p.id),
+    project_names: state.selectedProjects.map(p => p.name),
+    params: cfg,
+    days: state.schedule.map(d => ({
+      date:           d.date,
+      plan_collect_h: schedCalcCollect(d),
+      plan_label_h:   d.plan_label_h   || 0,
+      vendor_people:  d.vendor_people  || schedState.vendors.map(() => 0),
+    })),
+  };
+
+  let res, saved;
+  if (schedState.current) {
+    res   = await fetch('/api/schedules/' + schedState.current.id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    saved = await res.json();
+  } else {
+    res   = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    saved = await res.json();
+  }
+  schedState.current = saved;
+  await schedRefreshList();
+  document.getElementById('schedSelect').value = saved.id;
+  const ver = saved.versions.find(v => v.v === saved.current_version);
+  schedApplyVersion(saved, ver);
+  alert('已保存');
+}
+
+// ── 删除 ────────────────────────────────────────────────────
+async function schedDelete() {
+  const s = schedState.current;
+  if (!s || !confirm('确认删除排期「' + s.name + '」？')) return;
+  await fetch('/api/schedules/' + s.id, {method:'DELETE'});
+  schedNew();
+  await schedRefreshList();
+}
+
+// ── 快速填充（直接填 h） ─────────────────────────────────────
+function schedFillAll() {
+  const l = parseFloat(document.getElementById('fillLabelH').value) || 0;
+  state.schedule.forEach(d => {
+    if (!d.vendor_people) d.vendor_people = schedState.vendors.map(() => 0);
+    d.plan_label_h = l;
+  });
+  renderScheduleTable(); saveState();
+}
+function schedFillEmpty() {
+  const l = parseFloat(document.getElementById('fillLabelH').value) || 0;
+  state.schedule.forEach(d => {
+    if (!d.vendor_people) d.vendor_people = schedState.vendors.map(() => 0);
+    if (!d.plan_label_h)  d.plan_label_h  = l;
+  });
+  renderScheduleTable(); saveState();
+}
+function schedFillDays() { fillDays(); }
+
+// ── 计划 vs 实际 ─────────────────────────────────────────────
+async function schedLoadActual() {
+  const s = schedState.current;
+  if (!s) { alert('请先保存排期'); return; }
+  const projIds = (s.project_ids && s.project_ids.length)
+    ? s.project_ids
+    : state.selectedProjects.map(p => p.id);
+  if (!projIds.length) { alert('请先关联采集项目后保存排期'); return; }
+  const res  = await fetch('/api/schedules/' + s.id + '/compare?project_ids=' + projIds.join(','));
+  const data = await res.json();
+  schedRenderActual(data);
+}
+
+function schedRenderActual(d) {
+  const today = new Date().toISOString().slice(0,10);
+  const fmtDiff = v => v > 0
+    ? `<span style="color:#4ade80">+${v.toFixed(1)}</span>`
+    : v < 0 ? `<span style="color:#f87171">${v.toFixed(1)}</span>`
+    : `<span style="color:#64748b">0</span>`;
+
+  // 计算截止今天的累计计划（后端直接返回）
+  const cumPlanCollect = d.cum_plan_collect_to_today || 0;
+  const cumPlanLabel   = d.cum_plan_label_to_today   || 0;
+  const cumActCollect  = d.cum_act_collect  || 0;
+  const cumActLabel    = d.cum_act_label    || 0;
+
+  // 计算达标率
+  const collectRate = cumPlanCollect > 0 ? (cumActCollect / cumPlanCollect * 100) : 0;
+  const labelRate = cumPlanLabel > 0 ? (cumActLabel / cumPlanLabel * 100) : 0;
+  const packRate = cumPlanLabel > 0 ? (d.cum_act_packed || 0) / cumPlanLabel * 100 : 0;
+
+  const collectDiff = cumActCollect - cumPlanCollect;
+  const labelDiff = cumActLabel - cumPlanLabel;
+  const packDiff = (d.cum_act_packed || 0) - cumPlanLabel;
+
+  // 剩余缺口和后续排期
+  const target = d.target_h || 0;
+  const stockDel = d.stock_deliverable || 0;
+  const futureDel = d.future_deliverable || 0;
+  const remainGap = target - stockDel - futureDel;
+  const gapPercent = target > 0 ? (remainGap / target * 100) : 0;
+
+  // 截止日倒计时
+  const deadline = schedState.currentVer?.start_date || '';
+  const daysLeft = deadline ? Math.ceil((new Date(deadline) - new Date(today)) / 86400000) : 0;
+
+  // 渲染周报指标
+  const rateColor = r => r >= 90 ? '#4ade80' : r >= 70 ? '#fbbf24' : '#f87171';
+  const diffText = (diff, unit='h') => diff >= 0
+    ? `<span style="color:#4ade80">领先 +${diff.toFixed(1)}${unit}</span>`
+    : `<span style="color:#f87171">落后 ${diff.toFixed(1)}${unit}</span>`;
+
+  const el = (id, html) => { const e = document.getElementById(id); if(e) e.innerHTML = html; };
+
+  el('collectRate',  `<span style="color:${rateColor(collectRate)}">${cumPlanCollect>0 ? collectRate.toFixed(1)+'%' : '暂无计划'}</span>`);
+  el('collectDiff',  cumPlanCollect>0 ? `计划 ${cumPlanCollect.toFixed(1)}h｜实际 ${cumActCollect.toFixed(1)}h<br>${diffText(collectDiff)}` : '请在排期计划中配置供应商人力');
+
+  el('labelRate',    `<span style="color:${rateColor(labelRate)}">${cumPlanLabel>0 ? labelRate.toFixed(1)+'%' : '暂无计划'}</span>`);
+  el('labelDiff',    cumPlanLabel>0 ? `计划 ${cumPlanLabel.toFixed(1)}h｜实际 ${cumActLabel.toFixed(1)}h<br>${diffText(labelDiff)}` : '请在排期计划中填写计划标注');
+
+  el('packRate',     `<span style="color:${rateColor(packRate)}">${cumPlanLabel>0 ? packRate.toFixed(1)+'%' : '—'}</span>`);
+  el('packDiff',     cumPlanLabel>0 ? `预期 ${(cumPlanLabel*(d.pack_rate||0.9)).toFixed(1)}h｜实际 ${(d.cum_act_packed||0).toFixed(1)}h<br>${diffText(packDiff)}` : '—');
+
+  const gapColor = remainGap <= 0 ? '#4ade80' : remainGap < target * 0.1 ? '#fbbf24' : '#f87171';
+  el('remainGap',    `<span style="color:${gapColor}">${remainGap <= 0 ? '✓ 已满足' : '-'+remainGap.toFixed(1)+'h'}</span>`);
+  el('gapPercent',   `目标 ${target.toFixed(0)}h｜${remainGap>0 ? '缺口 '+gapPercent.toFixed(1)+'%' : '已覆盖目标'}`);
+
+  const futureColor = futureDel + stockDel >= target ? '#4ade80' : '#fbbf24';
+  el('futureDeliver', `<span style="color:${futureColor}">${futureDel.toFixed(1)}h</span>`);
+  el('futureNote',    `存量 ${stockDel.toFixed(1)}h｜合计 ${(futureDel+stockDel).toFixed(1)}h`);
+
+  const dlColor = daysLeft > 14 ? '#4ade80' : daysLeft > 7 ? '#fbbf24' : '#f87171';
+  el('daysLeft',     `<span style="color:${dlColor}">${daysLeft > 0 ? daysLeft+'天' : daysLeft === 0 ? '今日截止' : '已超期'}</span>`);
+  el('deadlineDate', `截止 ${deadline || '未设置'}`);
+
+  // 明细表
+  document.getElementById('actualBody').innerHTML = d.rows.map(r => {
+    const isPast = r.date <= today;
+    return `<tr style="${!isPast?'opacity:.4':''}">
+      <td>${r.date.slice(5).replace('-','/')}</td>
+      <td class="num">${isPast ? r.actual_collect.toFixed(1) : '—'}</td>
+      <td class="num">${isPast ? r.cum_act_collect.toFixed(1) : '—'}</td>
+      <td class="num">${r.plan_label.toFixed(1)}</td>
+      <td class="num">${isPast ? r.actual_label.toFixed(1) : '—'}</td>
+      <td class="num">${isPast ? r.actual_packed.toFixed(1) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── 覆盖 renderScheduleTable：供应商人力列版本 ──────────────
+function renderScheduleTable() {
+  const tbody = document.getElementById('schedBody');
+  const nv = schedState.vendors.length;
+  const colspan = 3 + nv + 5; // 日期+供应商列+每日采集+累计采集+标注+标注完+打包+状态+删
+  if (!state.schedule.length) {
+    tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:24px;color:var(--text-muted)">暂无排期行，请填充至截止日或手动添加</td></tr>`;
+    renderSummary();
+    return;
+  }
+  schedRebuildTableHead();
+
+  const c = getConfig();
+  const qc_rate = c.qc_rate / 100;
+  const pack_rate = c.pack_rate / 100;
+  let cumCollect = 0;
+  let cumLabel = 0;
+  let cumPack = 0;
+
+  tbody.innerHTML = state.schedule.map((row, i) => {
+    if (!row.vendor_people) row.vendor_people = schedState.vendors.map(() => 0);
+    while (row.vendor_people.length < nv) row.vendor_people.push(0);
+
+    const totalCollect = schedCalcCollect(row);
+    row.planned = totalCollect;
+    const r = computeRow(row);
+    const planLabel = row.plan_label_h || 0;
+
+    // 每日采集 = totalCollect × qc_rate
+    const dailyCollect = totalCollect * qc_rate;
+    cumCollect += dailyCollect;
+
+    // 累计标注和打包
+    cumLabel += planLabel;
+    const dailyPack = planLabel * pack_rate;
+    cumPack += dailyPack;
+
+    const badge = row.planned > 0
+      ? (r.ok ? '<span class="badge badge-green">有效</span>' : '<span class="badge badge-red">超期</span>')
+      : '';
+
+    const vendorCols = schedState.vendors.map((v, vi) => `
+      <td class="num">
+        <input class="input" type="number" value="${row.vendor_people[vi] || 0}" min="0" step="1"
+          style="width:60px;height:26px;font-size:12px;text-align:right"
+          oninput="state.schedule[${i}].vendor_people[${vi}]=parseFloat(this.value)||0;
+                   state.schedule[${i}].planned=schedCalcCollect(state.schedule[${i}]);
+                   renderScheduleTable();saveState()">
+      </td>`).join('');
+
+    return `<tr>
+      <td style="white-space:nowrap">${row.date}</td>
+      ${vendorCols}
+      <td class="num" style="color:#38bdf8;font-weight:600">${dailyCollect.toFixed(1)}</td>
+      <td class="num" style="color:#34d399;font-weight:600">${cumCollect.toFixed(1)}</td>
+      <td class="num">
+        <input class="input" type="number" value="${planLabel}" min="0" step="0.5"
+          style="width:60px;height:26px;font-size:12px;text-align:right;color:#a78bfa"
+          oninput="state.schedule[${i}].plan_label_h=parseFloat(this.value)||0;renderScheduleTable();saveState()">
+      </td>
+      <td class="num">${planLabel > 0 ? planLabel.toFixed(1) : '—'}</td>
+      <td class="num" style="color:#f59e0b;font-weight:600">${planLabel > 0 ? cumLabel.toFixed(1) : '—'}</td>
+      <td class="num">${planLabel > 0 ? dailyPack.toFixed(1) : '—'}</td>
+      <td class="num" style="color:#ec4899;font-weight:600">${planLabel > 0 ? cumPack.toFixed(1) : '—'}</td>
+      <td>${badge}</td>
+      <td><button class="btn-icon-only" onclick="removeRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+  renderSummary();
+}
+
+// ── 供应商导出/导入 ─────────────────────────────────────────
+function schedExportVendors() {
+  const json = JSON.stringify(schedState.vendors, null, 2);
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = 'vendors.json';
+  a.click();
+}
+
+function schedImportVendors() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const vendors = JSON.parse(ev.target.result);
+        if (!Array.isArray(vendors)) throw new Error('格式错误');
+        schedState.vendors = vendors.map(v => ({ name: String(v.name||''), eff: parseFloat(v.eff)||1.5 }));
+        schedRenderVendors();
+        renderScheduleTable();
+      } catch(err) {
+        alert('导入失败：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+</script>
+</body>
+</html>

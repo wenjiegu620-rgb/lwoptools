@@ -10,3 +10,4 @@ downloads/
 config.json
 **/snapshots/
 .DS_Store
+.env
