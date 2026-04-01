@@ -1,8 +1,9 @@
 # openclaw-skills
 
-机器人数据运营工具集，当前包含四个部分：
+机器人数据运营工具集，当前包含五个部分：
 
 - `scripts/sample_deliver`：从 Lightwheel 平台下载打包完成的数据，并生成 Excel 交付报告
+- `scripts/ops-kanban`：LW 运营看板，提供采集详情、流水线存量、全盘数据分析，含供应商独立登录页
 - `skills/case-copy`：智能复制 human case，支持自然语言描述场景/状态/数量/task去重，Agent 确认后执行复制
 - `skills/pipeline-monitor`：工作流链路监控 skill，支持定时监控和交互查询
 - `skills/daily-report`：运营日报 skill，从 Clickhouse 和数据平台 API 拉取数据并生成 Markdown 日报
@@ -13,12 +14,17 @@
 .
 ├── scripts/
 │   ├── pyproject.toml
-│   └── sample_deliver/
-│       ├── __init__.py
-│       ├── api.py
-│       ├── downloader.py
-│       ├── report.py
-│       └── tool.py
+│   ├── sample_deliver/
+│   │   ├── __init__.py
+│   │   ├── api.py
+│   │   ├── downloader.py
+│   │   ├── report.py
+│   │   └── tool.py
+│   └── ops-kanban/
+│       ├── server.py               # Flask 后端
+│       ├── index.html              # 管理员看板前端
+│       ├── vendor_performance.html # 供应商看板前端
+│       └── .env.example            # 环境变量模板
 └── skills/
     ├── case-copy/
     │   ├── SKILL.md
@@ -39,6 +45,58 @@
             ├── query.py
             └── test_monitor.py
 ```
+
+## scripts/ops-kanban
+
+LW 运营看板，基于 Flask + gunicorn，部署在远端服务器，提供实时数据查询。
+
+### 功能
+
+- **采集详情**：按供应商展开采集员明细，含累计/当日采集时长、质检通过时长与通过率、待质检时长、推断在线时长、活跃时段；支持按项目汇总视图（切换 Tab）；支持导出 Excel
+- **流水线存量**：8 阶段流水线实时库存，支持多项目对比
+- **历史产出**：按天展示各项目历史采集 / 质检数据，Chart.js 折线图
+- **全盘数据**：SSE 流式运行 all_data.py + analysis_all.py，生成完整运营分析 HTML 报告
+- **供应商看板**：独立登录页（`/vendor`），每个供应商只能看自己组的采集员数据，支持导出 Excel
+
+### 部署信息
+
+| 项目 | 值 |
+|------|-----|
+| 服务器 | `139.224.244.183` |
+| 端口 | `8000` |
+| 管理员入口 | `http://139.224.244.183:8000` |
+| 供应商入口 | `http://139.224.244.183:8000/vendor` |
+| 启动命令 | `gunicorn -w 4 --timeout 120 -b 0.0.0.0:8000 server:app` |
+
+### 环境变量
+
+复制 `.env.example` 为 `.env` 并填入实际值：
+
+```env
+CH_HOST=         # Clickhouse 地址（项目搜索）
+CH_PORT=9000
+CH_USER=
+CH_PASSWORD=
+
+MYSQL_HOST=      # MySQL RDS（流水线数据）
+MYSQL_PORT=3306
+MYSQL_USER=
+MYSQL_PASSWORD=
+
+KANBAN_PASSWORD= # 管理员登录密码
+FLASK_SECRET_KEY=
+
+# 供应商密码（格式: VENDOR_<组名>=<密码>）
+VENDOR_聚航=
+VENDOR_梵科云=
+```
+
+### 数据源
+
+- **Clickhouse**：项目搜索
+- **MySQL RDS**：human_cases / human_case_nodes，采集 + 质检 + 流水线数据
+
+---
 
 ## scripts/sample_deliver
 

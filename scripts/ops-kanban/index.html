@@ -389,6 +389,17 @@ input, button, select { font: inherit; }
 }
 .coll-btn:hover { opacity: .85; }
 .coll-status { font-size: 12px; color: #94a3b8; margin-left: 4px; }
+.coll-tab-btn {
+  height: 28px; padding: 0 14px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  border: 1px solid rgba(99,102,241,.3); background: transparent; color: #94a3b8; transition: all .15s;
+}
+.coll-tab-btn:hover { background: rgba(99,102,241,.1); color: #c7d2fe; }
+.coll-tab-active { background: rgba(99,102,241,.2) !important; color: #c7d2fe !important; border-color: rgba(99,102,241,.5) !important; }
+.proj-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.proj-table th { padding: 8px 14px; text-align: left; color: #64748b; font-weight: 500; font-size: 12px; background: rgba(99,102,241,.06); }
+.proj-table td { padding: 9px 14px; color: #cbd5e1; border-top: 1px solid rgba(99,102,241,.08); }
+.proj-table tr:hover td { background: rgba(99,102,241,.06); }
+.proj-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* 汇总卡片 */
 .coll-summary {
@@ -963,16 +974,28 @@ input, button, select { font: inherit; }
     <div class="coll-topbar">
       <span class="coll-topbar-label">日期</span>
       <input type="date" id="collDate" class="coll-date-input">
-      <button class="coll-btn" onclick="loadCollectors()">查询</button>
-      <button class="coll-btn" style="background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8" onclick="exportCollectorsExcel()">导出 Excel</button>
+      <button class="coll-btn" onclick="loadCollTab()">查询</button>
+      <button class="coll-btn" style="background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8" id="collExportBtn" onclick="exportCollectorsExcel()">导出 Excel</button>
       <span id="collStatus" class="coll-status"></span>
+      <!-- tab 切换 -->
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button id="tabBtnPerson" class="coll-tab-btn coll-tab-active" onclick="switchCollTab('person')">按采集员</button>
+        <button id="tabBtnProject" class="coll-tab-btn" onclick="switchCollTab('project')">按项目</button>
+      </div>
     </div>
 
     <!-- 汇总卡片 -->
     <div class="coll-summary" id="collSummary"></div>
 
-    <!-- 供应商列表 -->
-    <div id="collVendors"></div>
+    <!-- 按采集员 -->
+    <div id="collTabPerson">
+      <div id="collVendors"></div>
+    </div>
+
+    <!-- 按项目 -->
+    <div id="collTabProject" style="display:none">
+      <div id="collProjectWrap"></div>
+    </div>
   </div><!-- /pageCollectors -->
 
   <!-- ── 采集趋势 ── -->
@@ -1546,6 +1569,29 @@ function exportCSV() {
 
 // ── 采集统计 ──────────────────────────────
 let _collData = null;
+let _collProjectData = null;
+let _collActiveTab = 'person';
+
+function switchCollTab(tab) {
+  _collActiveTab = tab;
+  document.getElementById('tabBtnPerson').className  = 'coll-tab-btn' + (tab === 'person'  ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnProject').className = 'coll-tab-btn' + (tab === 'project' ? ' coll-tab-active' : '');
+  document.getElementById('collTabPerson').style.display  = tab === 'person'  ? '' : 'none';
+  document.getElementById('collTabProject').style.display = tab === 'project' ? '' : 'none';
+  document.getElementById('collExportBtn').style.display  = tab === 'person'  ? '' : 'none';
+  // 切到项目 tab 时若还没数据则自动加载
+  if (tab === 'project' && !_collProjectData) {
+    loadCollectorsByProject();
+  }
+}
+
+function loadCollTab() {
+  // 换日期时两个 tab 的缓存都失效
+  _collData = null;
+  _collProjectData = null;
+  if (_collActiveTab === 'person') loadCollectors();
+  else loadCollectorsByProject();
+}
 
 async function loadCollectors() {
   const d = document.getElementById('collDate').value;
@@ -1563,6 +1609,70 @@ async function loadCollectors() {
   } catch(e) {
     document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
   }
+}
+
+async function loadCollectorsByProject() {
+  const d = document.getElementById('collDate').value;
+  if (!d) return;
+  document.getElementById('collStatus').textContent = '加载中…';
+  document.getElementById('collProjectWrap').innerHTML = '';
+  try {
+    const res = await fetch('/api/collectors/by-project?date=' + d);
+    const data = await res.json();
+    _collProjectData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderCollByProject(data.projects || []);
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderCollByProject(projects) {
+  const wrap = document.getElementById('collProjectWrap');
+  if (!projects.length) {
+    wrap.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">暂无数据</div>';
+    return;
+  }
+  const totalCollect = projects.reduce((s, p) => s + p.collect_h, 0);
+  const totalQc      = projects.reduce((s, p) => s + p.qc_h, 0);
+  const totalPassed  = projects.reduce((s, p) => s + p.qc_passed, 0);
+  const totalQcAll   = projects.reduce((s, p) => s + p.qc_total, 0);
+  const overallRate  = totalQcAll > 0 ? (totalPassed / totalQcAll * 100).toFixed(1) : '-';
+
+  wrap.innerHTML = `
+    <div style="background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;overflow:hidden">
+      <div style="padding:12px 20px;border-bottom:1px solid rgba(99,102,241,.15);font-size:14px;font-weight:600;color:#c7d2fe;display:flex;gap:24px;align-items:center">
+        <span>按项目汇总（${projects.length} 个项目）</span>
+        <span style="font-size:12px;color:#64748b;font-weight:400">总采集 ${totalCollect.toFixed(1)}h &nbsp;·&nbsp; 质检通过 ${totalQc.toFixed(1)}h &nbsp;·&nbsp; 整体通过率 ${overallRate}%</span>
+      </div>
+      <table class="proj-table">
+        <thead><tr>
+          <th>#</th>
+          <th>项目名称</th>
+          <th class="num">当日采集数</th>
+          <th class="num">采集时长</th>
+          <th class="num">质检通过时长</th>
+          <th class="num">质检通过率</th>
+          <th class="num">参与采集员</th>
+        </tr></thead>
+        <tbody>
+          ${projects.map((p, i) => `<tr>
+            <td style="color:#475569;font-size:12px">${i + 1}</td>
+            <td style="color:#e2e8f0;font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.project_name}">${p.project_name}</td>
+            <td class="num">${p.collect_cases}</td>
+            <td class="num">${p.collect_h.toFixed(2)}h</td>
+            <td class="num">${p.qc_h.toFixed(2)}h</td>
+            <td class="num">
+              <div class="coll-rate-bar" style="justify-content:flex-end">
+                <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+                <span>${p.qc_rate}%</span>
+              </div>
+            </td>
+            <td class="num">${p.collector_count} 人</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function renderCollSummary(data) {

@@ -1097,6 +1097,96 @@ def collectors():
     })
 
 
+@app.route("/api/collectors/by-project")
+def collectors_by_project():
+    date_str = request.args.get("date", str(date.today()))
+    cache_key = f"coll_by_proj:{date_str}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return jsonify(cached)
+
+    conn = mysql()
+    try:
+        with conn.cursor() as cur:
+            # Step 1: 当日采集 - 按 project_id 聚合（不 JOIN projects，避免扫描开销）
+            cur.execute("""
+                SELECT hc.project_id,
+                       COUNT(DISTINCT hc.id) AS collect_cases,
+                       SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS collect_h,
+                       COUNT(DISTINCT hc.producer) AS collector_count
+                FROM human_cases hc
+                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                WHERE hcn.node_name = 'human_case_produce_complete'
+                  AND hcn.node_status = 3
+                  AND DATE(hcn.node_updated_at) = %s
+                  AND hc.deleted_at IS NULL
+                GROUP BY hc.project_id
+            """, [date_str])
+            collect_rows = {r["project_id"]: r for r in cur.fetchall()}
+
+            if not collect_rows:
+                return jsonify({"date": date_str, "projects": []})
+
+            # Step 2: 查项目名称（主键 IN 查询，极快）
+            pids = list(collect_rows.keys())
+            ph = ",".join(["%s"] * len(pids))
+            cur.execute(f"SELECT id, name FROM projects WHERE id IN ({ph})", pids)
+            name_map = {r["id"]: r["name"] for r in cur.fetchall()}
+
+            # Step 3: 当日质检 - 限定 project_id IN 活跃项目，大幅减少扫描范围
+            cur.execute(f"""
+                SELECT hc.project_id,
+                       COUNT(*) AS qc_total,
+                       SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS qc_passed,
+                       SUM(CASE WHEN q.passed = 1 THEN IFNULL(hc.video_seconds, 0) ELSE 0 END) / 3600.0 AS qc_h
+                FROM human_cases hc
+                JOIN (
+                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                    FROM human_case_nodes hcn
+                    WHERE hcn.node_name = 'human_case_sampling'
+                      AND hcn.node_status IN (3, 4)
+                      AND DATE(hcn.node_updated_at) = %s
+                    UNION ALL
+                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                    FROM human_case_nodes hcn
+                    WHERE hcn.node_name = 'human_case_inspect'
+                      AND hcn.node_status IN (3, 4)
+                      AND DATE(hcn.node_updated_at) = %s
+                      AND hcn.human_case_id NOT IN (
+                          SELECT DISTINCT human_case_id FROM human_case_nodes WHERE node_name = 'human_case_sampling'
+                      )
+                ) q ON q.human_case_id = hc.id
+                WHERE hc.deleted_at IS NULL
+                  AND hc.project_id IN ({ph})
+                GROUP BY hc.project_id
+            """, [date_str, date_str] + pids)
+            qc_rows = {r["project_id"]: r for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+    projects_out = []
+    for pid, c in collect_rows.items():
+        q = qc_rows.get(pid, {})
+        qc_passed = int(q.get("qc_passed") or 0)
+        qc_total  = int(q.get("qc_total") or 0)
+        projects_out.append({
+            "project_id":      pid,
+            "project_name":    name_map.get(pid, pid),
+            "collect_cases":   int(c["collect_cases"]),
+            "collect_h":       round(float(c["collect_h"] or 0), 2),
+            "qc_h":            round(float(q.get("qc_h") or 0), 2),
+            "qc_passed":       qc_passed,
+            "qc_total":        qc_total,
+            "qc_rate":         round(qc_passed / qc_total * 100, 1) if qc_total > 0 else 0,
+            "collector_count": int(c["collector_count"]),
+        })
+    projects_out.sort(key=lambda x: -x["collect_h"])
+
+    result = {"date": date_str, "projects": projects_out}
+    _cache_set(cache_key, result, 300)
+    return jsonify(result)
+
+
 @app.route("/api/collector-stats")
 def collector_stats():
     """采集员绩效统计（日期范围 + 用户组筛选）"""
