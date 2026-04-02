@@ -48,51 +48,29 @@ def get_client(config):
 
 def query_status(client, project_keyword, node_name=None):
     """各节点堆积概览"""
-    if node_name:
-        sql = """
-        SELECT
-            p.name AS project_name,
-            sub.node_name,
-            countIf(sub.latest_status = 'failed') AS failed_cnt,
-            countIf(sub.latest_status IN ('running', 'interacting')) AS pending_cnt
-        FROM (
-            SELECT data_uuid, node_name, project_id,
-                   argMax(status, updated_at) AS latest_status
-            FROM workflow_node_run
-            WHERE project_id IN (SELECT toString(uuid) FROM project)
-            GROUP BY data_uuid, node_name, project_id
-        ) sub
-        JOIN project p ON p.uuid = toUUID(sub.project_id)
-        WHERE sub.latest_status IN ('failed', 'running', 'interacting')
-          AND p.name LIKE %(keyword)s
-          AND sub.node_name = %(node_name)s
-        GROUP BY p.name, sub.node_name
-        HAVING failed_cnt > 0
-        ORDER BY p.name, failed_cnt DESC
-        """
-        return client.execute(sql, {"keyword": f"%{project_keyword}%", "node_name": node_name})
-    else:
-        sql = """
-        SELECT
-            p.name AS project_name,
-            sub.node_name,
-            countIf(sub.latest_status = 'failed') AS failed_cnt,
-            countIf(sub.latest_status IN ('running', 'interacting')) AS pending_cnt
-        FROM (
-            SELECT data_uuid, node_name, project_id,
-                   argMax(status, updated_at) AS latest_status
-            FROM workflow_node_run
-            WHERE project_id IN (SELECT toString(uuid) FROM project)
-            GROUP BY data_uuid, node_name, project_id
-        ) sub
-        JOIN project p ON p.uuid = toUUID(sub.project_id)
-        WHERE sub.latest_status IN ('failed', 'running', 'interacting')
-          AND p.name LIKE %(keyword)s
-        GROUP BY p.name, sub.node_name
-        HAVING failed_cnt > 0
-        ORDER BY p.name, failed_cnt DESC
-        """
-        return client.execute(sql, {"keyword": f"%{project_keyword}%"})
+    node_filter = f"AND sub.node_name = '{node_name}'" if node_name else ""
+    sql = f"""
+    SELECT
+        p.name AS project_name,
+        sub.node_name,
+        countIf(sub.latest_status = 'failed') AS failed_cnt,
+        countIf(sub.latest_status IN ('running', 'interacting')) AS pending_cnt
+    FROM (
+        SELECT data_uuid, node_name, project_id,
+               argMax(status, updated_at) AS latest_status
+        FROM workflow_node_run
+        WHERE project_id IN (SELECT toString(uuid) FROM project)
+        GROUP BY data_uuid, node_name, project_id
+    ) sub
+    JOIN project p ON p.uuid = toUUID(sub.project_id)
+    WHERE sub.latest_status IN ('failed', 'running', 'interacting')
+      AND p.name LIKE %(keyword)s
+      {node_filter}
+    GROUP BY p.name, sub.node_name
+    HAVING failed_cnt > 0
+    ORDER BY p.name, failed_cnt DESC
+    """
+    return client.execute(sql, {"keyword": f"%{project_keyword}%"})
 
 
 def query_detail(client, project_keyword, node_name):
@@ -124,51 +102,29 @@ def query_detail(client, project_keyword, node_name):
 
 def query_trend(client, project_keyword, node_name=None):
     """最近 7 天每天失败数趋势"""
-    if node_name:
-        sql = """
-        SELECT
-            toDate(updated_at) AS day,
-            sub.node_name,
-            countIf(sub.latest_status = 'failed') AS failed_cnt
-        FROM (
-            SELECT data_uuid, node_name, project_id,
-                   toDate(updated_at) AS day_bucket,
-                   argMax(status, updated_at) AS latest_status,
-                   max(updated_at) AS updated_at
-            FROM workflow_node_run
-            WHERE updated_at >= today() - 7
-              AND project_id IN (
-                  SELECT toString(uuid) FROM project WHERE name LIKE %(keyword)s
-              )
-              AND node_name = %(node_name)s
-            GROUP BY data_uuid, node_name, project_id, day_bucket
-        ) sub
-        GROUP BY day, sub.node_name
-        ORDER BY day DESC, failed_cnt DESC
-        """
-        return client.execute(sql, {"keyword": f"%{project_keyword}%", "node_name": node_name})
-    else:
-        sql = """
-        SELECT
-            toDate(updated_at) AS day,
-            sub.node_name,
-            countIf(sub.latest_status = 'failed') AS failed_cnt
-        FROM (
-            SELECT data_uuid, node_name, project_id,
-                   toDate(updated_at) AS day_bucket,
-                   argMax(status, updated_at) AS latest_status,
-                   max(updated_at) AS updated_at
-            FROM workflow_node_run
-            WHERE updated_at >= today() - 7
-              AND project_id IN (
-                  SELECT toString(uuid) FROM project WHERE name LIKE %(keyword)s
-              )
-            GROUP BY data_uuid, node_name, project_id, day_bucket
-        ) sub
-        GROUP BY day, sub.node_name
-        ORDER BY day DESC, failed_cnt DESC
-        """
-        return client.execute(sql, {"keyword": f"%{project_keyword}%"})
+    node_filter = f"AND node_name = '{node_name}'" if node_name else ""
+    sql = f"""
+    SELECT
+        toDate(updated_at) AS day,
+        sub.node_name,
+        countIf(sub.latest_status = 'failed') AS failed_cnt
+    FROM (
+        SELECT data_uuid, node_name, project_id,
+               toDate(updated_at) AS day_bucket,
+               argMax(status, updated_at) AS latest_status,
+               max(updated_at) AS updated_at
+        FROM workflow_node_run
+        WHERE updated_at >= today() - 7
+          AND project_id IN (
+              SELECT toString(uuid) FROM project WHERE name LIKE %(keyword)s
+          )
+          {node_filter}
+        GROUP BY data_uuid, node_name, project_id, day_bucket
+    ) sub
+    GROUP BY day, sub.node_name
+    ORDER BY day DESC, failed_cnt DESC
+    """
+    return client.execute(sql, {"keyword": f"%{project_keyword}%"})
 
 
 def format_status(rows, project_keyword):
