@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>账号管理</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+           background: #0b0b1e; color: #e2e8f0; padding: 32px 40px; }
+
+    .topbar {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 28px;
+    }
+    .topbar-title { font-size: 18px; font-weight: 700; color: #c7d2fe; flex: 1; }
+    .btn {
+      height: 34px; padding: 0 18px; border-radius: 6px;
+      background: linear-gradient(135deg,#4f46e5,#38bdf8);
+      color: #fff; font-size: 13px; border: none; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-ghost {
+      height: 34px; padding: 0 14px; border-radius: 6px;
+      background: #1e293b; color: #94a3b8; font-size: 13px;
+      border: 1px solid #334155; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center;
+    }
+    .btn-ghost:hover { background: #334155; }
+    .btn-danger {
+      height: 26px; padding: 0 10px; border-radius: 5px;
+      background: rgba(239,68,68,.15); color: #f87171; font-size: 12px;
+      border: 1px solid rgba(239,68,68,.3); cursor: pointer;
+    }
+    .btn-danger:hover { background: rgba(239,68,68,.25); }
+    .btn-sm {
+      height: 26px; padding: 0 10px; border-radius: 5px;
+      background: rgba(99,102,241,.15); color: #818cf8; font-size: 12px;
+      border: 1px solid rgba(99,102,241,.3); cursor: pointer;
+    }
+    .btn-sm:hover { background: rgba(99,102,241,.25); }
+
+    .layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; }
+
+    .card {
+      background: #13132d; border: 1px solid rgba(99,102,241,.2);
+      border-radius: 10px; overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 20px; border-bottom: 1px solid rgba(99,102,241,.15);
+      font-size: 14px; font-weight: 600; color: #c7d2fe;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-body { padding: 20px; }
+
+    /* 分组 */
+    .group-block { border-bottom: 1px solid rgba(99,102,241,.1); }
+    .group-block:last-child { border-bottom: none; }
+    .group-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; background: rgba(99,102,241,.06);
+      cursor: pointer; user-select: none;
+    }
+    .group-header:hover { background: rgba(99,102,241,.10); }
+    .group-name { font-size: 13px; font-weight: 600; color: #c7d2fe; flex: 1; }
+    .group-count { font-size: 12px; color: #475569; }
+    .chevron { font-size: 11px; color: #475569; transition: transform .2s; }
+    .chevron.open { transform: rotate(90deg); }
+    .group-body { display: none; }
+    .group-body.open { display: block; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { padding: 7px 16px; text-align: left; color: #64748b; font-weight: 500; font-size: 12px;
+         background: rgba(99,102,241,.04); }
+    td { padding: 8px 16px; color: #cbd5e1; border-top: 1px solid rgba(99,102,241,.06); }
+    tr:hover td { background: rgba(99,102,241,.04); }
+    .uname-cell { color: #e2e8f0; font-weight: 500; font-family: monospace; }
+    .date-cell { color: #475569; font-size: 12px; }
+    .empty { text-align: center; padding: 40px; color: #475569; }
+
+    /* 密码显示 */
+    .pwd-wrap { display: flex; align-items: center; gap: 6px; }
+    .pwd-text { font-family: monospace; color: #94a3b8; }
+    .eye-btn { background: none; border: none; cursor: pointer; color: #475569; font-size: 13px; padding: 2px; }
+    .eye-btn:hover { color: #94a3b8; }
+
+
+    /* 右侧面板 */
+    .field-row { margin-bottom: 14px; }
+    label { font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px; }
+    input[type=text], input[type=number] {
+      width: 100%; padding: 9px 12px; border-radius: 6px;
+      border: 1px solid rgba(99,102,241,.3); background: #0b0b1e;
+      color: #e2e8f0; font-size: 13px; outline: none;
+    }
+    input[type=text]:focus, input[type=number]:focus { border-color: #6366f1; }
+    .hint { font-size: 11px; color: #475569; margin-top: 4px; }
+
+    /* 自定义下拉 */
+    .sel-wrap { position: relative; }
+    .sel-native {
+      width: 100%; padding: 9px 12px; border-radius: 6px;
+      border: 1px solid rgba(99,102,241,.3); background: #1e293b;
+      color: #e2e8f0; font-size: 13px; outline: none; cursor: pointer;
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      padding-right: 32px;
+    }
+    .sel-native:focus { border-color: #6366f1; }
+    .sel-native option { background: #1e293b; color: #e2e8f0; }
+    .sel-native option.new-opt { color: #818cf8; }
+    .new-input-wrap { margin-top: 8px; display: none; }
+    .new-input-wrap.open { display: block; }
+    .new-vendor-input {
+      width: 100%; padding: 9px 12px; border-radius: 6px; font-size: 13px;
+      border: 1px solid rgba(99,102,241,.4); background: #0b0b1e; color: #e2e8f0; outline: none;
+    }
+    .new-vendor-input:focus { border-color: #6366f1; }
+
+    /* 创建结果 */
+    .result-card {
+      background: #0f172a; border: 1px solid rgba(34,197,94,.2);
+      border-radius: 8px; padding: 14px 16px; margin-top: 14px;
+    }
+    .result-title { font-size: 12px; color: #86efac; margin-bottom: 10px; font-weight: 600; }
+    .result-row { display: flex; justify-content: space-between; align-items: center;
+                  padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 13px; }
+    .result-row:last-child { border-bottom: none; }
+    .result-uname { color: #e2e8f0; font-family: monospace; }
+    .result-pwd { font-family: monospace; color: #38bdf8; }
+    .copy-hint { font-size: 11px; color: #475569; margin-top: 8px; }
+
+    .status { font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="topbar-title">账号管理</span>
+    <span id="statusMsg" class="status"></span>
+    <a href="/" class="btn-ghost">返回看板</a>
+    <a href="/admin/logout" class="btn-ghost">退出</a>
+  </div>
+
+  <div class="layout">
+    <!-- 账号列表（分组） -->
+    <div class="card">
+      <div class="card-header">
+        供应商账号列表
+        <span id="totalCount" style="font-size:12px;color:#64748b;font-weight:400"></span>
+      </div>
+      <div id="vendorGroups">
+        <div class="empty">加载中…</div>
+      </div>
+    </div>
+
+    <!-- 批量创建 -->
+    <div class="card">
+      <div class="card-header">批量创建账号</div>
+      <div class="card-body">
+        <div class="field-row">
+          <label>供应商名称</label>
+          <div class="sel-wrap" id="groupSelWrap">
+            <select class="sel-native" id="groupSelNative" onchange="onGroupSelect()">
+              <option value="">请选择供应商…</option>
+              <option value="__new__" class="new-opt">＋ 新增供应商</option>
+            </select>
+          </div>
+          <div class="new-input-wrap" id="newGroupWrap">
+            <input class="new-vendor-input" id="newGroupInput" placeholder="输入新供应商名称" oninput="onNewGroupInput()">
+          </div>
+          <input type="hidden" id="batchGroup">
+          <div class="hint">选择已有供应商，或新增</div>
+        </div>
+        <div class="field-row">
+          <label>创建数量</label>
+          <input type="number" id="batchCount" value="1" min="1" max="50">
+          <div class="hint">账号名自动编号，如 聚航_1、聚航_2…</div>
+        </div>
+        <button class="btn" style="width:100%" onclick="batchCreate()">批量创建</button>
+        <div id="batchResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let _vendors = []; // [{group, accounts:[{username,password,created_at}]}]
+    const _pwdVisible = {};
+    const _pwdCache = {};
+
+    async function loadVendors() {
+      const res = await fetch('/api/admin/vendors');
+      if (res.status === 401) { location.href = '/admin/login'; return; }
+      const data = await res.json();
+      _vendors = data.vendors || [];
+      // 缓存密码
+      _vendors.forEach(v => v.accounts.forEach(a => { if (a.password) _pwdCache[a.username] = a.password; }));
+      renderGroups();
+    }
+
+    function renderGroups() {
+      const container = document.getElementById('vendorGroups');
+      // 记录当前展开状态
+      const openGroups = new Set(
+        _vendors.map(v => v.group).filter(g => document.getElementById('grp-' + CSS.escape(g))?.classList.contains('open'))
+      );
+      const totalAccounts = _vendors.reduce((s, v) => s + v.accounts.length, 0);
+      document.getElementById('totalCount').textContent = `${_vendors.length} 个供应商 · ${totalAccounts} 个账号`;
+      // 更新供应商下拉选项（保留第一项和最后一项）
+      const sel = document.getElementById('groupSelNative');
+      const currentVal = sel.value;
+      sel.innerHTML = `<option value="">请选择供应商…</option>` +
+        _vendors.map(v => `<option value="${v.group}">${v.group}</option>`).join('') +
+        `<option value="__new__" class="new-opt">＋ 新增供应商</option>`;
+      if (currentVal) sel.value = currentVal;
+
+      if (!_vendors.length) {
+        container.innerHTML = '<div class="empty">暂无账号</div>';
+        return;
+      }
+
+      container.innerHTML = _vendors.map(v => `
+        <div class="group-block">
+          <div class="group-header" onclick="toggleGroup('${esc(v.group)}')">
+            <span class="chevron" id="chev-${CSS.escape(v.group)}">▶</span>
+            <span class="group-name">${v.group}</span>
+            <span class="group-count">${v.accounts.length} 个账号</span>
+          </div>
+          <div class="group-body" id="grp-${CSS.escape(v.group)}">
+            <table>
+              <thead><tr><th>账号</th><th>密码</th><th>创建时间</th><th>操作</th></tr></thead>
+              <tbody>
+                ${v.accounts.map(a => accountRow(v.group, a)).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`).join('');
+      // 恢复展开状态
+      openGroups.forEach(g => {
+        document.getElementById('grp-' + CSS.escape(g))?.classList.add('open');
+        document.getElementById('chev-' + CSS.escape(g))?.classList.add('open');
+      });
+    }
+
+    function toggleGroup(group) {
+      const body = document.getElementById('grp-' + CSS.escape(group));
+      const chev = document.getElementById('chev-' + CSS.escape(group));
+      if (!body) return;
+      body.classList.toggle('open');
+      chev.classList.toggle('open');
+    }
+
+    function accountRow(group, a) {
+      const uid = CSS.escape(a.username);
+      return `<tr>
+        <td class="uname-cell">${a.username}</td>
+        <td>
+          <div class="pwd-wrap">
+            <span class="pwd-text" id="pwd-${uid}">••••••••</span>
+            <button class="eye-btn" onclick="togglePwd('${esc(a.username)}')">👁</button>
+            <button class="btn-sm" onclick="resetPwd('${esc(group)}','${esc(a.username)}')">重置密码</button>
+          </div>
+        </td>
+        <td class="date-cell">${a.created_at || '—'}</td>
+        <td><button class="btn-danger" onclick="deleteAccount('${esc(group)}','${esc(a.username)}')">删除</button></td>
+      </tr>`;
+    }
+
+    function esc(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+
+    function togglePwd(username) {
+      const el = document.getElementById('pwd-' + CSS.escape(username));
+      if (!el) return;
+      if (_pwdVisible[username]) {
+        el.textContent = '••••••••';
+        _pwdVisible[username] = false;
+      } else {
+        el.textContent = _pwdCache[username] || '（创建后可见）';
+        _pwdVisible[username] = true;
+      }
+    }
+
+    function genPwd() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+      return Array.from({length: 12}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+
+async function resetPwd(group, username) {
+      const pwd = genPwd();
+      const res = await fetch(`/api/admin/vendors/${encodeURIComponent(group)}/${encodeURIComponent(username)}/reset`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: pwd})
+      });
+      if (res.ok) {
+        _pwdCache[username] = pwd;
+        // 如果当前是展开状态则刷新显示
+        const el = document.getElementById('pwd-' + CSS.escape(username));
+        if (el && _pwdVisible[username]) el.textContent = pwd;
+        setStatus(`✓ ${username} 新密码：${pwd}`);
+      }
+    }
+
+    async function deleteAccount(group, username) {
+      if (!confirm(`确认删除账号「${username}」？`)) return;
+      const res = await fetch(`/api/admin/vendors/${encodeURIComponent(group)}/${encodeURIComponent(username)}`, {method: 'DELETE'});
+      if (res.ok) {
+        await loadVendors();
+        setStatus('✓ 已删除 ' + username);
+      }
+    }
+
+    async function batchCreate() {
+      const selVal = document.getElementById('groupSelNative').value;
+      const group = (selVal === '__new__'
+        ? document.getElementById('newGroupInput').value.trim()
+        : selVal
+      ).trim();
+      const count = parseInt(document.getElementById('batchCount').value) || 0;
+      if (!group) { alert('请填写供应商名称'); return; }
+      if (count <= 0) { alert('数量至少为 1'); return; }
+
+      const res = await fetch('/api/admin/vendors/batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({group, count})
+      });
+      const data = await res.json();
+      const created = data.created || [];
+
+      created.forEach(c => { _pwdCache[c.username] = c.password; });
+
+      document.getElementById('batchResult').innerHTML = `
+        <div class="result-card">
+          <div class="result-title">✓ 已创建 ${created.length} 个账号（请立即复制密码）</div>
+          ${created.map(c => `
+            <div class="result-row">
+              <span class="result-uname">${c.username}</span>
+              <span class="result-pwd">${c.password}</span>
+            </div>`).join('')}
+          <div class="copy-hint">密码仅在此处显示一次，请复制后发给对应供应商</div>
+        </div>`;
+
+      await loadVendors();
+      // 展开刚创建的组
+      const body = document.getElementById('grp-' + CSS.escape(group));
+      const chev = document.getElementById('chev-' + CSS.escape(group));
+      if (body && !body.classList.contains('open')) {
+        body.classList.add('open');
+        chev && chev.classList.add('open');
+      }
+    }
+
+    // ── 供应商下拉 ──
+    function onGroupSelect() {
+      const val = document.getElementById('groupSelNative').value;
+      if (val === '__new__') {
+        document.getElementById('newGroupWrap').classList.add('open');
+        document.getElementById('newGroupInput').value = '';
+        document.getElementById('batchGroup').value = '';
+        document.getElementById('newGroupInput').focus();
+      } else {
+        document.getElementById('newGroupWrap').classList.remove('open');
+        document.getElementById('batchGroup').value = val;
+      }
+    }
+    function onNewGroupInput() {
+      document.getElementById('batchGroup').value = document.getElementById('newGroupInput').value.trim();
+    }
+
+    function setStatus(msg) {
+      const el = document.getElementById('statusMsg');
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 3000);
+    }
+
+    loadVendors();
+  </script>
+</body>
+</html>

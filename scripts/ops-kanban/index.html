@@ -26,7 +26,7 @@ input, button, select { font: inherit; }
   --border: rgba(99,102,241,.25);
   --border-light: rgba(99,102,241,.15);
   --sidebar-bg: #080818;
-  --sidebar-w: 208px;
+  --topnav-h: 50px;
   --header-h: 48px;
   --text: #e2e8f0;
   --text-muted: #94a3b8;
@@ -36,56 +36,36 @@ input, button, select { font: inherit; }
 }
 
 /* ── Layout ── */
-.layout { display: flex; min-height: 100vh; }
+.layout { display: block; min-height: 100vh; }
 
-/* Sidebar */
-.sidebar {
-  width: var(--sidebar-w); flex-shrink: 0;
+/* ── Top Nav ── */
+.topnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: var(--topnav-h);
   background: var(--sidebar-bg);
-  display: flex; flex-direction: column;
-  position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
-  overflow-y: auto;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  display: flex; align-items: center; padding: 0 20px; gap: 0;
 }
-.sidebar-logo {
-  height: 56px; padding: 0 20px;
-  display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-  flex-shrink: 0;
+.topnav-logo {
+  font-size: 15px; font-weight: 700; color: #fff;
+  margin-right: 28px; white-space: nowrap; letter-spacing: .3px;
 }
-.sidebar-logo .logo-icon {
-  width: 28px; height: 28px; flex-shrink: 0;
+.topnav-tabs { display: flex; align-items: center; flex: 1; gap: 2px; }
+.nav-item {
+  padding: 6px 14px; border-radius: 6px;
+  color: rgba(255,255,255,.55); font-size: 13px;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
 }
-.sidebar-logo .logo-text {
-  color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap;
-}
-.sidebar-nav { padding: 8px 0; flex: 1; }
-.sidebar-section {
-  padding: 16px 20px 6px;
-  font-size: 11px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .6px;
-}
-.sidebar-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 9px 20px; color: rgba(255,255,255,.65);
-  font-size: 13px; cursor: pointer; transition: all .15s;
-  border-radius: 0;
-}
-.sidebar-item:hover { color: #fff; background: rgba(255,255,255,.06); }
-.sidebar-item.active { color: #fff; background: var(--primary); }
-.sidebar-item .icon { font-size: 14px; flex-shrink: 0; }
-.sidebar-tags { padding: 4px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
-.sidebar-ctag {
-  display: inline-flex; align-items: center;
-  padding: 3px 10px; border-radius: 12px; font-size: 12px;
-  background: rgba(255,255,255,.08); color: rgba(255,255,255,.55);
-  cursor: pointer; transition: all .15s; border: 1px solid rgba(255,255,255,.1);
-}
-.sidebar-ctag:hover { background: rgba(255,255,255,.15); color: #fff; }
-.sidebar-ctag.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.nav-item:hover { color: #fff; background: rgba(255,255,255,.07); }
+.nav-item.active { color: #fff; background: var(--primary); }
+.topnav-right { display: flex; align-items: center; gap: 4px; }
+.topnav-right .nav-item { font-size: 12px; padding: 5px 10px; }
 
 /* Main area */
 .main-area {
-  margin-left: var(--sidebar-w);
-  width: calc(100vw - var(--sidebar-w));
+  margin-left: 0;
+  width: 100%;
+  padding-top: var(--topnav-h);
   display: flex; flex-direction: column; min-height: 100vh;
 }
 
@@ -481,6 +461,15 @@ input, button, select { font: inherit; }
   border-radius: 4px; padding: 1px 6px;
 }
 
+/* ── 交付进度卡片 ── */
+.dv-card {
+  background: #13132d; border-radius: 12px; padding: 16px 18px;
+  width: 280px; cursor: pointer; border: 1px solid rgba(99,102,241,.2);
+  transition: border-color .15s, transform .1s;
+}
+.dv-card:hover { border-color: rgba(99,102,241,.6); transform: translateY(-2px); }
+.dv-card-name { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+
 /* ── 全盘数据页 ── */
 .ov-page {
   background: #0b0b1e; min-height: calc(100vh - 48px);
@@ -578,37 +567,23 @@ input, button, select { font: inherit; }
 <body>
 <div class="layout">
 
-<!-- ── Sidebar ── -->
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <span class="logo-text">运营监测</span>
+<!-- ── Top Nav ── -->
+<nav class="topnav">
+  <span class="topnav-logo">运营监测</span>
+  <div class="topnav-tabs">
+    <div class="nav-item active" data-page="collectors" onclick="switchPage('collectors')">采集详情</div>
+    <div class="nav-item" data-page="trend" onclick="switchPage('trend')">采集趋势</div>
+    <div class="nav-item" data-page="delivery" onclick="switchPage('delivery')">交付进度</div>
+    <div class="nav-item" data-page="weekcompare" onclick="switchPage('weekcompare')">周对比</div>
   </div>
-  <nav class="sidebar-nav">
-    <div class="sidebar-section">运营数据</div>
-    <div class="sidebar-item" data-page="collectors" onclick="switchPage('collectors')">采集详情</div>
-    <div class="sidebar-item" data-page="trend" onclick="switchPage('trend')">采集趋势</div>
-    <div class="sidebar-item" data-page="overview" onclick="switchPage('overview')">全盘数据</div>
-    <div class="sidebar-section" style="margin-top:8px">交付管理</div>
-    <div class="sidebar-tags">
-      <span class="sidebar-ctag" onclick="quickFilter('grape')" data-c="grape">grape</span>
-      <span class="sidebar-ctag" onclick="quickFilter('mango')" data-c="mango">mango</span>
-      <span class="sidebar-ctag" onclick="quickFilter('orange')" data-c="orange">orange</span>
-      <span class="sidebar-ctag" onclick="quickFilter('strawberry')" data-c="strawberry">strawberry</span>
-    </div>
-    <div class="sidebar-item active" data-page="schedule" onclick="switchPage('schedule')">排期</div>
-    <div class="sidebar-item" data-page="history" onclick="switchPage('history')">历史产出</div>
-    <div class="sidebar-section" style="margin-top:8px">人员管理</div>
-    <div class="sidebar-item" onclick="window.open('/performance.html', '_blank')">人员绩效</div>
-    <div class="sidebar-item" onclick="aiAnalyze()">AI 风险分析</div>
-    <div class="sidebar-item" id="sidebarAlertBtn" onclick="aiAlert()" style="display:none">AI 补救方案</div>
-  </nav>
-  <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
-    <a href="/logout" style="display:block;text-align:center;padding:8px;border-radius:8px;
-       color:rgba(255,255,255,.45);font-size:12px;text-decoration:none;
-       transition:background .2s" onmouseover="this.style.background='rgba(255,255,255,.08)'"
-       onmouseout="this.style.background=''">退出登录</a>
+  <div class="topnav-right">
+    <div class="nav-item" onclick="window.open('/performance.html', '_blank')">人员绩效</div>
+    <div class="nav-item" onclick="aiAnalyze()">AI 分析</div>
+    <div class="nav-item" id="sidebarAlertBtn" onclick="aiAlert()" style="display:none">AI 补救</div>
+    <a id="accountsLink" href="/admin/accounts" class="nav-item" style="display:none;text-decoration:none;color:rgba(255,255,255,.55)">账号管理</a>
+    <a href="/logout" class="nav-item" style="text-decoration:none;color:rgba(255,255,255,.55)">退出</a>
   </div>
-</aside>
+</nav>
 
 <!-- ── Main ── -->
 <div class="main-area">
@@ -977,10 +952,13 @@ input, button, select { font: inherit; }
       <button class="coll-btn" onclick="loadCollTab()">查询</button>
       <button class="coll-btn" style="background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8" id="collExportBtn" onclick="exportCollectorsExcel()">导出 Excel</button>
       <span id="collStatus" class="coll-status"></span>
+      <span id="collUpdatedAt" style="font-size:12px;color:var(--text-muted)"></span>
       <!-- tab 切换 -->
       <div style="margin-left:auto;display:flex;gap:6px">
         <button id="tabBtnPerson" class="coll-tab-btn coll-tab-active" onclick="switchCollTab('person')">按采集员</button>
         <button id="tabBtnProject" class="coll-tab-btn" onclick="switchCollTab('project')">按项目</button>
+        <button id="tabBtnWrist" class="coll-tab-btn" onclick="switchCollTab('wrist')">腕部相机人效</button>
+        <button id="tabBtnPT" class="coll-tab-btn" onclick="switchCollTab('pt')">P+T 人效</button>
       </div>
     </div>
 
@@ -996,13 +974,29 @@ input, button, select { font: inherit; }
     <div id="collTabProject" style="display:none">
       <div id="collProjectWrap"></div>
     </div>
+
+    <!-- 腕部相机人效 -->
+    <div id="collTabWrist" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;color:#94a3b8;flex:1" id="wristExportStatus"></span>
+        <button class="btn btn-default btn-sm" onclick="exportWristExcel()">导出近7天 Excel</button>
+      </div>
+      <div id="collWristWatch" style="margin-bottom:16px"></div>
+      <div id="collWristWrap"></div>
+    </div>
+
+    <!-- P+T 人效 -->
+    <div id="collTabPT" style="display:none">
+      <div id="collPTWatch" style="margin-bottom:16px"></div>
+      <div id="collPTWrap"></div>
+    </div>
   </div><!-- /pageCollectors -->
 
   <!-- ── 采集趋势 ── -->
   <div class="content" id="pageTrend" style="display:none">
     <div class="coll-topbar" style="gap:12px">
       <span class="coll-topbar-label">近</span>
-      <select id="trendDays" class="coll-date-input" style="width:80px">
+      <select id="trendDays" class="coll-date-input" style="width:80px" onchange="if(_trendData)renderTrend()">
         <option value="30">30 天</option>
         <option value="60" selected>60 天</option>
         <option value="90">90 天</option>
@@ -1012,8 +1006,9 @@ input, button, select { font: inherit; }
         <option value="hours">小时 (h)</option>
         <option value="cases">条数</option>
       </select>
-      <button class="coll-btn" onclick="loadTrend()">查询</button>
+      <button class="coll-btn" onclick="loadTrend(true)">手动刷新</button>
       <span id="trendStatus" class="coll-status"></span>
+      <span id="trendUpdatedAt" style="font-size:12px;color:var(--text-muted)"></span>
     </div>
     <!-- 汇总指标 -->
     <div id="trendSummary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
@@ -1051,6 +1046,56 @@ input, button, select { font: inherit; }
     </div>
   </div><!-- /pageOverview -->
 
+  <!-- ── 交付进度 ── -->
+  <div class="content" id="pageDelivery" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <span style="font-size:18px;font-weight:600;color:#e2e8f0">交付进度</span>
+      <span id="deliveryUpdatedAt" style="font-size:12px;color:#94a3b8"></span>
+      <button id="deliveryRefreshBtn" onclick="triggerDeliveryRefresh()"
+        style="padding:4px 14px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:13px">
+        刷新数据
+      </button>
+      <span id="deliveryRefreshingTip" style="font-size:12px;color:#f59e0b;display:none">🔄 数据更新中，约需 10 分钟…</span>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#94a3b8;margin-left:8px" title="去重规则：仅对开启去重的项目生效">
+        <input type="checkbox" id="deliveryDedupToggle" onchange="renderDeliveryCards()" style="accent-color:#6366f1;width:14px;height:14px">
+        显示去重数据
+      </label>
+    </div>
+
+    <!-- 项目卡片 -->
+    <div id="deliveryCards" style="display:flex;flex-wrap:wrap;gap:16px"></div>
+
+    <!-- 空状态 -->
+    <div id="deliveryEmpty" style="display:none;padding:40px;text-align:center;color:#64748b">
+      <div style="font-size:36px;margin-bottom:8px">📦</div>
+      <div>暂无数据，数据首次加载约需 10 分钟</div>
+    </div>
+
+    <!-- 项目详情展开区 -->
+    <div id="deliveryDetail" style="display:none;margin-top:24px;background:#13132d;border-radius:12px;padding:20px;border:1px solid rgba(99,102,241,.2)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <span id="deliveryDetailTitle" style="font-size:16px;font-weight:600;color:#e2e8f0"></span>
+        <button onclick="closeDeliveryDetail()"
+          style="margin-left:auto;padding:3px 12px;border-radius:6px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px">关闭</button>
+      </div>
+      <div id="deliveryDetailContent"></div>
+    </div>
+  </div><!-- /pageDelivery -->
+
+  <!-- ── 周对比 ── -->
+  <div class="content" id="pageWeekCompare" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:18px;font-weight:600;color:#e2e8f0">供应商周对比</span>
+      <input type="week" id="wcWeek"
+        style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;font-size:13px">
+      <button onclick="loadWeekCompare()"
+        style="padding:4px 16px;border-radius:6px;border:1px solid #6366f1;background:#6366f1;color:#fff;cursor:pointer;font-size:13px">查询</button>
+      <span id="wcStatus" style="font-size:12px;color:#94a3b8"></span>
+    </div>
+    <div id="wcPeriod" style="font-size:13px;color:#64748b;margin-bottom:20px"></div>
+    <div id="wcOverallCards" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px"></div>
+    <div id="wcVendorTable"></div>
+  </div><!-- /pageWeekCompare -->
 
 
   <!-- 新项目弹窗 -->
@@ -1211,7 +1256,7 @@ async function doSearch(q) {
 function hideDD() { document.getElementById('searchDropdown').style.display = 'none'; }
 function quickFilter(keyword) {
   // 切到排期页，自动加载该客户最新排期
-  switchPage('schedule');
+  switchPage('collectors');
   // 等 schedInitPage 完成后（异步），找名称包含 keyword 的最新排期并加载
   const tryLoad = () => {
     const match = schedState.schedules.find(s =>
@@ -1569,28 +1614,72 @@ function exportCSV() {
 
 // ── 采集统计 ──────────────────────────────
 let _collData = null;
+let _collSparklines = {};
+
+function sparkline(values, w = 100, h = 22) {
+  if (!values || values.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
+  const max = Math.max(...values), min = Math.min(...values);
+  const range = max - min || 1, pad = 3;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = (h - pad) - ((v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last = values[values.length - 1];
+  const lx = (w - pad).toFixed(1);
+  const ly = ((h - pad) - ((last - min) / range) * (h - pad * 2)).toFixed(1);
+  const avgFirst = values.slice(0, Math.floor(values.length / 2)).reduce((a, b) => a + b, 0) / Math.floor(values.length / 2) || 0;
+  const color = last >= avgFirst ? '#34d399' : '#fb923c';
+  return `<svg width="${w}" height="${h}" style="overflow:visible;vertical-align:middle">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="${lx}" cy="${ly}" r="2.5" fill="${color}"/>
+    <text x="${parseFloat(lx)+5}" y="${parseFloat(ly)+4}" font-size="9" fill="${color}" font-family="monospace">${last.toFixed(1)}h</text>
+  </svg>`;
+}
+
+async function loadCollSparklines(date) {
+  try {
+    const res = await fetch(`/api/collectors/sparklines?date=${date}&days=14`);
+    if (!res.ok) return;
+    const data = await res.json();
+    _collSparklines = data.producers || {};
+    document.querySelectorAll('[data-sparkline]').forEach(td => {
+      const p = td.dataset.sparkline;
+      if (_collSparklines[p]) td.innerHTML = sparkline(_collSparklines[p]);
+    });
+  } catch(e) { /* 静默失败 */ }
+}
 let _collProjectData = null;
 let _collActiveTab = 'person';
+let _wristData = null;
+let _ptData = null;
+let _watchList = {wrist: [], pt: []};
 
 function switchCollTab(tab) {
   _collActiveTab = tab;
   document.getElementById('tabBtnPerson').className  = 'coll-tab-btn' + (tab === 'person'  ? ' coll-tab-active' : '');
   document.getElementById('tabBtnProject').className = 'coll-tab-btn' + (tab === 'project' ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnWrist').className   = 'coll-tab-btn' + (tab === 'wrist'   ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnPT').className      = 'coll-tab-btn' + (tab === 'pt'      ? ' coll-tab-active' : '');
   document.getElementById('collTabPerson').style.display  = tab === 'person'  ? '' : 'none';
   document.getElementById('collTabProject').style.display = tab === 'project' ? '' : 'none';
+  document.getElementById('collTabWrist').style.display   = tab === 'wrist'   ? '' : 'none';
+  document.getElementById('collTabPT').style.display      = tab === 'pt'      ? '' : 'none';
   document.getElementById('collExportBtn').style.display  = tab === 'person'  ? '' : 'none';
-  // 切到项目 tab 时若还没数据则自动加载
-  if (tab === 'project' && !_collProjectData) {
-    loadCollectorsByProject();
-  }
+  if (tab === 'project' && !_collProjectData) loadCollectorsByProject();
+  if (tab === 'wrist') loadWristCamera();
+  if (tab === 'pt') loadPTCamera();
 }
 
 function loadCollTab() {
-  // 换日期时两个 tab 的缓存都失效
   _collData = null;
   _collProjectData = null;
+  _wristData = null;
+  _ptData = null;
   if (_collActiveTab === 'person') loadCollectors();
-  else loadCollectorsByProject();
+  else if (_collActiveTab === 'project') loadCollectorsByProject();
+  else if (_collActiveTab === 'wrist') loadWristCamera();
+  else loadPTCamera();
 }
 
 async function loadCollectors() {
@@ -1604,8 +1693,12 @@ async function loadCollectors() {
     const data = await res.json();
     _collData = data;
     document.getElementById('collStatus').textContent = '';
+    if (data.updated_at) {
+      document.getElementById('collUpdatedAt').textContent = '最后更新: ' + data.updated_at;
+    }
     renderCollSummary(data);
     renderCollVendors(data.vendors);
+    loadCollSparklines(d);
   } catch(e) {
     document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
   }
@@ -1675,13 +1768,254 @@ function renderCollByProject(projects) {
     </div>`;
 }
 
+async function loadWristCamera() {
+  if (_wristData) { renderWristLike(_wristData, 'wrist'); return; }
+  const d = document.getElementById('collDate').value;
+  if (!d) return;
+  document.getElementById('collStatus').textContent = '加载中…';
+  try {
+    await loadWatchList();
+    const res = await fetch('/api/collectors/wrist-camera?date=' + d);
+    const data = await res.json();
+    _wristData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderWristLike(data, 'wrist');
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function loadPTCamera() {
+  if (_ptData) { renderWristLike(_ptData, 'pt'); return; }
+  const d = document.getElementById('collDate').value;
+  if (!d) return;
+  document.getElementById('collStatus').textContent = '加载中…';
+  try {
+    await loadWatchList();
+    const res = await fetch('/api/collectors/pt-camera?date=' + d);
+    const data = await res.json();
+    _ptData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderWristLike(data, 'pt');
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function exportWristExcel() {
+  const statusEl = document.getElementById('wristExportStatus');
+  statusEl.textContent = '数据加载中…';
+  try {
+    const res = await fetch('/api/collectors/wrist-camera/range');
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const json = await res.json();
+    const { dates, vendors } = json;
+
+    // 日期列标题（MM-DD 格式）
+    const dateCols = dates.map(d => d.slice(5));  // "04-01"
+
+    const wb = XLSX.utils.book_new();
+    for (const [vendor, persons] of Object.entries(vendors)) {
+      const rows = [];
+      // 表头
+      rows.push(['采集员', ...dateCols, '合计(h)']);
+      // 按合计降序排列
+      const sorted = Object.entries(persons).sort((a, b) => {
+        const sumA = dates.reduce((s, d) => s + (a[1][d] || 0), 0);
+        const sumB = dates.reduce((s, d) => s + (b[1][d] || 0), 0);
+        return sumB - sumA;
+      });
+      for (const [producer, dayMap] of sorted) {
+        const vals = dates.map(d => +(dayMap[d] || 0).toFixed(2));
+        const total = +vals.reduce((s, v) => s + v, 0).toFixed(2);
+        rows.push([producer, ...vals, total]);
+      }
+      // 汇总行
+      const sumRow = ['合计'];
+      dates.forEach((d) => {
+        const s = sorted.reduce((acc, [, dm]) => acc + (dm[d] || 0), 0);
+        sumRow.push(+s.toFixed(2));
+      });
+      sumRow.push(+sumRow.slice(1).reduce((a, b) => a + b, 0).toFixed(2));
+      rows.push(sumRow);
+      // 平均人效行（活跃=当天有数据的人）
+      const avgRow = ['平均人效'];
+      dates.forEach((d) => {
+        const active = sorted.filter(([, dm]) => (dm[d] || 0) > 0);
+        const avg = active.length > 0
+          ? +(active.reduce((acc, [, dm]) => acc + (dm[d] || 0), 0) / active.length).toFixed(2)
+          : 0;
+        avgRow.push(avg);
+      });
+      avgRow.push('');
+      rows.push(avgRow);
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      // 列宽
+      ws['!cols'] = [{ wch: 16 }, ...dates.map(() => ({ wch: 8 })), { wch: 10 }];
+      // sheet 名最多 31 字符
+      XLSX.utils.book_append_sheet(wb, ws, vendor.slice(0, 31));
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `腕部相机人效_近7天_${today}.xlsx`);
+    statusEl.textContent = '';
+  } catch(e) {
+    statusEl.textContent = '导出失败: ' + e.message;
+  }
+}
+
+// ── 关注采集员 ────────────────────────────────────────────────────────────
+async function loadWatchList() {
+  try {
+    const [rw, rp] = await Promise.all([
+      fetch('/api/watch/list?tab=wrist').then(r => r.json()),
+      fetch('/api/watch/list?tab=pt').then(r => r.json()),
+    ]);
+    _watchList.wrist = rw.producers || [];
+    _watchList.pt    = rp.producers || [];
+  } catch(e) {}
+}
+
+async function toggleWatch(producer, tab) {
+  try {
+    const res = await fetch('/api/watch/toggle', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({producer, tab})
+    });
+    const d = await res.json();
+    _watchList[tab] = d.producers || [];
+    if (tab === 'wrist' && _wristData) renderWristLike(_wristData, 'wrist');
+    if (tab === 'pt'    && _ptData)    renderWristLike(_ptData,    'pt');
+  } catch(e) {}
+}
+
+function renderWristLike(data, tab) {
+  const wrapId  = tab === 'wrist' ? 'collWristWrap'  : 'collPTWrap';
+  const watchId = tab === 'wrist' ? 'collWristWatch' : 'collPTWatch';
+  const wrap    = document.getElementById(wrapId);
+  const watchEl = document.getElementById(watchId);
+  const watched = _watchList[tab] || [];
+
+  // 我的关注区域
+  const watchedPersons = [];
+  if (data.vendors) {
+    for (const v of data.vendors) {
+      for (const p of v.persons) {
+        if (watched.includes(p.producer)) watchedPersons.push({...p, group: v.group});
+      }
+    }
+  }
+  if (watchedPersons.length) {
+    watchEl.innerHTML = `
+      <div style="background:#0f172a;border:1px solid rgba(251,191,36,.3);border-radius:10px;overflow:hidden;margin-bottom:4px">
+        <div style="padding:8px 16px;border-bottom:1px solid rgba(251,191,36,.15);font-size:13px;font-weight:600;color:#fbbf24">⭐ 我的关注</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr>
+            ${['采集员','供应商','采集条数','采集时长','质检通过','待质检','待抽检','质检通过时长',''].map(h =>
+              `<th style="padding:6px 14px;text-align:${h===''?'center':'right'};first-child:text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(251,191,36,.06)">${h}</th>`
+            ).join('')}
+          </tr></thead>
+          <tbody>
+            ${watchedPersons.map(p => `<tr style="border-top:1px solid rgba(251,191,36,.08)">
+              <td style="padding:7px 14px;color:#fde68a;font-weight:500">${p.producer}</td>
+              <td style="padding:7px 14px;text-align:right;color:#94a3b8;font-size:12px">${p.group}</td>
+              <td style="padding:7px 14px;text-align:right;color:#cbd5e1">${p.collect_cases}</td>
+              <td style="padding:7px 14px;text-align:right;color:#cbd5e1">${p.collect_h.toFixed(2)}h</td>
+              <td style="padding:7px 14px;text-align:right;color:#4ade80;font-weight:600">${p.qc_passed}</td>
+              <td style="padding:7px 14px;text-align:right;color:#f59e0b">${p.pending_inspect}</td>
+              <td style="padding:7px 14px;text-align:right;color:#a78bfa">${p.pending_sampling}</td>
+              <td style="padding:7px 14px;text-align:right;color:#38bdf8">${p.qc_h.toFixed(2)}h</td>
+              <td style="padding:7px 14px;text-align:center"><button onclick="toggleWatch('${p.producer.replace(/'/g,"\\'")}','${tab}')" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;cursor:pointer">取消关注</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } else {
+    watchEl.innerHTML = '';
+  }
+
+  // 主列表
+  if (!data.vendors || !data.vendors.length) {
+    wrap.innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">该日期暂无数据</div>';
+    return;
+  }
+  const summaryHtml = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+      ${[
+        {label:'活跃采集员', val: data.total_persons + ' 人'},
+        {label:'当日采集条数', val: data.total_collect_cases + ' 条'},
+        {label:'质检通过条数', val: data.total_qc_cases + ' 条'},
+        {label:'质检通过时长', val: data.total_qc_h.toFixed(2) + 'h'},
+      ].map(s => `<div class="coll-stat">
+        <div class="coll-stat-label">${s.label}</div>
+        <div class="coll-stat-value">${s.val}</div>
+      </div>`).join('')}
+    </div>`;
+
+  const vendorBlocks = data.vendors.map(v => `
+    <div style="background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;overflow:hidden;margin-bottom:12px">
+      <div style="padding:10px 20px;border-bottom:1px solid rgba(99,102,241,.15);display:flex;align-items:center;gap:16px">
+        <span style="font-size:14px;font-weight:600;color:#c7d2fe">${v.group}</span>
+        <span style="font-size:12px;color:#64748b">${v.person_count} 人 &nbsp;·&nbsp; 采集 ${v.collect_cases} 条 &nbsp;·&nbsp; 质检通过 ${v.qc_passed} 条 &nbsp;·&nbsp; 待质检 ${v.pending_inspect} &nbsp;·&nbsp; 待抽检 ${v.pending_sampling} &nbsp;·&nbsp; ${v.qc_h.toFixed(2)}h</span>
+        <span style="margin-left:auto;font-size:13px;font-weight:600;color:#38bdf8">${v.person_count > 0 ? (v.qc_h / v.person_count).toFixed(2) : '0.00'}h<span style="font-size:11px;font-weight:400;color:#64748b;margin-left:4px">平均人效</span></span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="padding:7px 16px;text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集员</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集条数</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集时长</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">质检通过</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">待质检</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">待抽检</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">质检通过时长</th>
+          <th style="padding:7px 16px;text-align:center;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">关注</th>
+        </tr></thead>
+        <tbody>
+          ${v.persons.map(p => {
+            const isWatched = watched.includes(p.producer);
+            const rowOpacity = p.is_filtered ? 'opacity:0.45;' : '';
+            const filteredTip = p.is_filtered ? ' title="当日采集≤10条，不计入人均"' : '';
+            return `<tr style="border-top:1px solid rgba(99,102,241,.08);${rowOpacity}"${filteredTip}>
+              <td style="padding:8px 16px;color:#e2e8f0;font-weight:500">${p.producer}${p.is_filtered ? '<span style="margin-left:5px;font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(100,116,139,.25);color:#94a3b8">少</span>' : ''}</td>
+              <td style="padding:8px 16px;text-align:right;color:#cbd5e1">${p.collect_cases}</td>
+              <td style="padding:8px 16px;text-align:right;color:#cbd5e1">${p.collect_h.toFixed(2)}h</td>
+              <td style="padding:8px 16px;text-align:right;color:#4ade80;font-weight:600">${p.qc_passed}</td>
+              <td style="padding:8px 16px;text-align:right;color:#f59e0b">${p.pending_inspect}</td>
+              <td style="padding:8px 16px;text-align:right;color:#a78bfa">${p.pending_sampling}</td>
+              <td style="padding:8px 16px;text-align:right;color:#38bdf8">${p.qc_h.toFixed(2)}h</td>
+              <td style="padding:8px 16px;text-align:center">
+                <button onclick="toggleWatch('${p.producer.replace(/'/g,"\\'")}','${tab}')"
+                  style="font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid ${isWatched?'rgba(251,191,36,.5)':'rgba(99,102,241,.3)'};background:${isWatched?'rgba(251,191,36,.15)':'transparent'};color:${isWatched?'#fbbf24':'#64748b'}">
+                  ${isWatched ? '⭐' : '☆'}
+                </button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+
+  wrap.innerHTML = summaryHtml + vendorBlocks;
+}
+
+function renderWristCamera(data) {
+  renderWristLike(data, 'wrist');
+}
+
 function renderCollSummary(data) {
+  const seniorLabel = (data.senior_persons != null)
+    ? `老人 ${data.senior_persons} / 新人 ${data.junior_persons}`
+    : data.total_vendors + ' 家供应商';
+  const avgVal = (data.senior_avg_collect_h != null && data.senior_persons > 0)
+    ? data.senior_avg_collect_h.toFixed(1) + 'h'
+    : (data.total_persons > 0 ? (data.total_collect_h / data.total_persons).toFixed(1) + 'h' : '-');
   const items = [
-    { label:'活跃采集员', value: data.total_persons, sub: data.total_vendors + ' 家供应商', accent: true },
+    { label:'活跃采集员', value: data.total_persons, sub: seniorLabel, accent: true },
     { label:'采集总时长', value: data.total_collect_h.toFixed(1) + 'h', sub: '原始视频' },
     { label:'质检通过时长', value: data.total_qc_h.toFixed(1) + 'h', sub: '可流转数据' },
     { label:'整体通过率', value: data.overall_qc_rate + '%', sub: '质检通过 / 采集' },
-    { label:'人均采集', value: data.total_persons > 0 ? (data.total_collect_h / data.total_persons).toFixed(1) + 'h' : '-', sub: '今日平均产出' },
+    { label:'人均采集（老人）', value: avgVal, sub: '剔除新人后均值' },
   ];
   document.getElementById('collSummary').innerHTML = items.map(it =>
     `<div class="coll-stat${it.accent?' accent':''}">
@@ -1703,6 +2037,7 @@ function renderCollVendors(vendors) {
         <div style="display:flex;align-items:center;gap:10px">
           <span class="coll-vendor-name">${v.vendor}</span>
           <span class="coll-vendor-badge">${v.count} 人</span>
+          ${v.junior_count > 0 ? `<span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,.12);padding:1px 6px;border-radius:4px">新人 ${v.junior_count}</span>` : ''}
         </div>
         <div class="coll-vendor-meta">
           <div class="coll-vendor-stat">
@@ -1719,7 +2054,7 @@ function renderCollVendors(vendors) {
           </div>
           <div class="coll-vendor-stat">
             <div class="coll-vendor-stat-val">${v.avg_collect_h.toFixed(1)}h</div>
-            <div class="coll-vendor-stat-lbl">人均</div>
+            <div class="coll-vendor-stat-lbl">人均(老人)</div>
           </div>
           <span class="coll-chevron">▶</span>
         </div>
@@ -1730,11 +2065,14 @@ function renderCollVendors(vendors) {
             <th>采集员</th>
             <th>累计采集时长</th><th>累计质检通过时长</th><th>累计质检通过率</th>
             <th>当日采集数</th><th>当日采集时长</th><th>当日质检通过时长</th><th>当日质检通过率</th>
-            <th>待质检时长</th><th>推断在线</th><th>活跃时段</th>
+            <th>本周质检通过时长</th><th>待质检时长</th><th>推断在线</th><th>活跃时段</th>
           </tr></thead>
           <tbody>
             ${v.persons.map(p => `<tr>
-              <td style="color:#e2e8f0;font-weight:500">${p.producer}</td>
+              <td style="line-height:1.3">
+                <span style="color:#e2e8f0;font-weight:500">${p.producer}</span>${p.is_new ? '<span style="margin-left:5px;font-size:10px;background:rgba(245,158,11,.18);color:#f59e0b;padding:1px 5px;border-radius:3px;vertical-align:middle">新</span>' : ''}${p.first_collect_date ? `<span style="margin-left:6px;font-size:11px;color:#475569;font-weight:400">${p.first_collect_date}</span>` : ''}
+                <div data-sparkline="${p.producer}" style="margin-top:4px">${_collSparklines[p.producer] ? sparkline(_collSparklines[p.producer]) : ''}</div>
+              </td>
               <td>${p.total_collect_h.toFixed(1)}h</td>
               <td>${p.total_qc_h.toFixed(1)}h</td>
               <td>
@@ -1752,6 +2090,7 @@ function renderCollVendors(vendors) {
                   <span>${p.qc_rate}%</span>
                 </div>
               </td>
+              <td>${p.week_qc_h.toFixed(1)}h</td>
               <td>${p.pending_qc_h.toFixed(1)}h</td>
               <td>${p.online_h.toFixed(2)}h</td>
               <td><span class="coll-tag-time">${p.first_seen} – ${p.last_seen}</span></td>
@@ -1768,7 +2107,7 @@ function exportCollectorsExcel() {
   const date = document.getElementById('collDate').value;
   const headers = ['供应商','采集员','累计采集时长(h)','累计质检通过时长(h)','累计质检通过率(%)',
     '当日采集数','当日采集时长(h)','当日质检通过时长(h)','当日质检通过率(%)',
-    '待质检时长(h)','推断在线(h)','活跃时段'];
+    '本周质检通过时长(h)','待质检时长(h)','推断在线(h)','活跃时段'];
   const rows = [];
   for (const v of _collData.vendors) {
     for (const p of v.persons) {
@@ -1776,9 +2115,14 @@ function exportCollectorsExcel() {
         v.vendor, p.producer,
         p.total_collect_h, p.total_qc_h, p.total_qc_rate,
         p.collect_cases, p.collect_h, p.qc_h, p.qc_rate,
-        p.pending_qc_h, p.online_h, `${p.first_seen} – ${p.last_seen}`
+        p.week_qc_h, p.pending_qc_h, p.online_h, `${p.first_seen} – ${p.last_seen}`
       ]);
     }
+    const active = v.persons.filter(p => p.collect_cases > 10);
+    const avgEff = active.length > 0
+      ? +(active.reduce((s, p) => s + p.qc_h, 0) / active.length).toFixed(2)
+      : 0;
+    rows.push([v.vendor, `平均人效（活跃${active.length}人）`, '', '', '', '', '', avgEff, '', '', '', '', '']);
   }
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   const wb = XLSX.utils.book_new();
@@ -2044,6 +2388,220 @@ function ovLogLine(msg) {
 
 function ovLog(msg) { ovLogLine(msg); }
 
+// ── 周对比 ────────────────────────────────
+function _getCurrentISOWeek() {
+  const d = new Date();
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const diffDays = Math.floor((d - startOfWeek1) / 86400000);
+  const week = Math.floor(diffDays / 7) + 1;
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+async function loadWeekCompare() {
+  const w = document.getElementById('wcWeek').value;
+  if (!w) return;
+  const st = document.getElementById('wcStatus');
+  st.textContent = '查询中…';
+  try {
+    const data = await fetch('/api/vendor-week-compare?week=' + encodeURIComponent(w)).then(r => r.json());
+    _renderWeekCompare(data);
+    st.textContent = '';
+  } catch(e) {
+    st.textContent = '加载失败';
+  }
+}
+
+function _wcFmtPct(v) {
+  if (v == null) return '—';
+  return (v * 100).toFixed(1) + '%';
+}
+function _wcPctChange(oldV, newV) {
+  // 用展示精度（0.1h）判断是否为0，避免 0.04h 显示为 0 却算 -100%
+  const oldR = Math.round(oldV * 10) / 10;
+  const newR = Math.round(newV * 10) / 10;
+  if (oldR === 0) return newR > 0 ? '新增' : '—';
+  if (newR === 0 && oldR === 0) return '—';
+  const p = ((newV - oldV) / oldV * 100).toFixed(0);
+  return (p >= 0 ? '+' : '') + p + '%';
+}
+function _wcPpChange(oldV, newV) {
+  if (oldV == null && newV == null) return '—';
+  if (oldV == null) return '新增';
+  if (newV == null) return '—';
+  const pp = ((newV - oldV) * 100).toFixed(1);
+  return (parseFloat(pp) >= 0 ? '+' : '') + pp + '%';
+}
+function _wcColor(s) {
+  if (!s || s === '—' || s === '新增') return 'color:#94a3b8';
+  return s.startsWith('+') ? 'color:#22c55e' : 'color:#ef4444';
+}
+
+function _renderWeekCompare(data) {
+  const { this_week, last_week, overall, vendors } = data;
+
+  document.getElementById('wcPeriod').textContent =
+    `本周 ${this_week.start} ~ ${this_week.end}（${this_week.days}天）  vs  上周 ${last_week.start} ~ ${last_week.end}（${last_week.days}天）`;
+
+  // 关注的供应商（localStorage）
+  const _wcWatched = () => JSON.parse(localStorage.getItem('wcWatchVendors') || '[]');
+  const _wcToggle  = name => {
+    const w = _wcWatched();
+    const i = w.indexOf(name);
+    if (i === -1) w.push(name); else w.splice(i, 1);
+    localStorage.setItem('wcWatchVendors', JSON.stringify(w));
+  };
+
+  // 计算卡片聚合数据（关注优先，无关注则全部）
+  const watched = _wcWatched();
+  const cardSrc = watched.length ? vendors.filter(v => watched.includes(v.name)) : vendors;
+  const cardLabel = watched.length ? `关注供应商（${watched.length} 家）` : '全部供应商';
+
+  const _wcAgg   = (src, key) => src.reduce((s, v) => s + (v[key] || 0), 0);
+  const _wcWtQc  = (src, rateKey, hKey) => {
+    const th = _wcAgg(src, hKey); if (!th) return null;
+    return src.reduce((s, v) => s + (v[rateKey] || 0) * (v[hKey] || 0), 0) / th;
+  };
+  const twH  = _wcAgg(cardSrc, 'this_week_h'),  lwH  = _wcAgg(cardSrc, 'last_week_h');
+  const twAc = _wcAgg(cardSrc, 'this_week_active'), lwAc = _wcAgg(cardSrc, 'last_week_active');
+  const twQc = _wcWtQc(cardSrc, 'this_week_qc_rate', 'this_week_h');
+  const lwQc = _wcWtQc(cardSrc, 'last_week_qc_rate', 'last_week_h');
+  const twDays = this_week.days, lwDays = last_week.days;
+
+  // 质检人效 = 日均采集人效（后端按天算、>10条过滤）× 质检通过率
+  const _wcEff = (dailyCollectEff, qcRate) => {
+    if (dailyCollectEff == null) return null;
+    const rate = (qcRate != null && qcRate > 0) ? qcRate : 1;
+    return Math.round(dailyCollectEff * rate * 10) / 10;
+  };
+  // 汇总卡片：加权平均日均采集人效（按各供应商本周时长加权）
+  const _wcWeightedDCE = (src, dceKey, hKey) => {
+    const validSrc = src.filter(v => v[dceKey] != null);
+    const totalH = validSrc.reduce((s, v) => s + (v[hKey] || 0), 0);
+    if (!totalH) return null;
+    return validSrc.reduce((s, v) => s + v[dceKey] * (v[hKey] || 0), 0) / totalH;
+  };
+  const twDCE = _wcWeightedDCE(cardSrc, 'tw_daily_collect_eff', 'this_week_h');
+  const lwDCE = _wcWeightedDCE(cardSrc, 'lw_daily_collect_eff', 'last_week_h');
+  const twEff = _wcEff(twDCE, twQc);
+  const lwEff = _wcEff(lwDCE, lwQc);
+
+  const cards = [
+    { label: '日均采集时长',
+      tw: Math.round(twH / twDays * 10) / 10 + 'h',
+      lw: Math.round(lwH / lwDays * 10) / 10 + 'h',
+      ch: _wcPctChange(lwH / lwDays, twH / twDays) },
+    { label: '累计采集时长',
+      tw: Math.round(twH * 10) / 10 + 'h',
+      lw: Math.round(lwH * 10) / 10 + 'h',
+      ch: _wcPctChange(lwH, twH) },
+    { label: '活跃采集员',
+      tw: twAc + ' 人', lw: lwAc + ' 人',
+      ch: _wcPctChange(lwAc, twAc) },
+    { label: '质检通过率',
+      tw: _wcFmtPct(twQc), lw: _wcFmtPct(lwQc),
+      ch: _wcPpChange(lwQc, twQc) },
+    { label: '采集人效',
+      tw: twEff != null ? twEff + ' h/人·天' : '—',
+      lw: lwEff != null ? lwEff + ' h/人·天' : '—',
+      ch: _wcPctChange(lwEff || 0, twEff || 0) },
+  ];
+
+  const wcCardAccents = ['#6366f1','#0ea5e9','#a855f7','#10b981','#f59e0b'];
+  document.getElementById('wcOverallCards').innerHTML =
+    `<div style="width:100%;margin-bottom:6px;font-size:12px;color:#475569">${cardLabel}</div>` +
+    cards.map((c, i) => {
+      const accent  = wcCardAccents[i % wcCardAccents.length];
+      const chColor = c.ch.startsWith('+') ? '#4ade80' : c.ch.startsWith('-') ? '#f87171' : '#94a3b8';
+      return `
+      <div style="
+        position:relative;overflow:hidden;background:#0f172a;
+        border-radius:14px;padding:20px 22px 18px;min-width:160px;flex:1;
+        border:1px solid rgba(255,255,255,.07);
+        box-shadow:0 0 0 1px rgba(255,255,255,.03),0 4px 20px rgba(0,0,0,.4)">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${accent}"></div>
+        <div style="font-size:11px;color:#475569;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px">${c.label}</div>
+        <div style="font-size:30px;font-weight:800;color:#f1f5f9;letter-spacing:-.5px;line-height:1">${c.tw}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+          <span style="font-size:12px;color:#334155">上周 ${c.lw}</span>
+          <span style="font-size:13px;font-weight:700;color:${chColor}">${c.ch}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+  // 关注的置顶，其余按本周时长排
+  const sortedVendors = [
+    ...vendors.filter(v => watched.includes(v.name)),
+    ...vendors.filter(v => !watched.includes(v.name)),
+  ];
+
+  const rows = sortedVendors.map(v => {
+    const isWatched = watched.includes(v.name);
+    const hCh  = _wcPctChange(v.last_week_h, v.this_week_h);
+    const qcCh = _wcPpChange(v.last_week_qc_rate, v.this_week_qc_rate);
+    const rowBg = isWatched ? 'background:rgba(99,102,241,.08)' : '';
+
+    // 质检人效 = 日均采集人效（后端已过滤 ≤10条）× 质检率
+    const vLwEff = _wcEff(v.lw_daily_collect_eff, v.last_week_qc_rate);
+    const vTwEff = _wcEff(v.tw_daily_collect_eff, v.this_week_qc_rate);
+    const effCh  = _wcPctChange(vLwEff || 0, vTwEff || 0);
+    const effTwText = vTwEff != null ? vTwEff + '' : '—';
+    const effLwText = vLwEff != null ? vLwEff + '' : '—';
+
+    return `
+      <tr style="border-top:1px solid #1e293b;${rowBg}">
+        <td style="padding:10px 14px">
+          <span onclick="_wcToggleRow('${v.name.replace(/'/g,"\\'")}',this)"
+                style="cursor:pointer;margin-right:8px;font-size:15px;user-select:none"
+                title="${isWatched ? '取消关注' : '关注'}">${isWatched ? '★' : '☆'}</span>
+          <span style="color:#e2e8f0;font-weight:${isWatched ? '600' : '400'}">${v.name}</span>
+        </td>
+        <td style="padding:10px 14px;color:#94a3b8;text-align:right">${v.last_week_h}h</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right;font-weight:600">${v.this_week_h}h</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(hCh)}">${hCh}</td>
+        <td style="padding:10px 14px;color:#94a3b8;text-align:right">${_wcFmtPct(v.last_week_qc_rate)}</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right">${_wcFmtPct(v.this_week_qc_rate)}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(qcCh)}">${qcCh}</td>
+        <td style="padding:10px 14px;color:#64748b;text-align:right">${effLwText}</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right">${effTwText}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(effCh)}">${effCh}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('wcVendorTable').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;
+                  overflow:hidden;border:1px solid #334155">
+      <thead>
+        <tr style="background:#0f172a">
+          <th style="padding:10px 14px;text-align:left;color:#64748b;font-weight:500;font-size:13px">供应商</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">上周时长</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">本周时长</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">变化</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">上周质检率</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">本周质检率</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">质检变化</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">上周采集人效</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">本周采集人效</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">人效变化</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // 保存 vendors 数据供 toggle 用
+  window._wcLastData = data;
+}
+
+function _wcToggleRow(name, starEl) {
+  const w = JSON.parse(localStorage.getItem('wcWatchVendors') || '[]');
+  const i = w.indexOf(name);
+  if (i === -1) w.push(name); else w.splice(i, 1);
+  localStorage.setItem('wcWatchVendors', JSON.stringify(w));
+  // 重新渲染（用缓存数据，不重新请求）
+  if (window._wcLastData) _renderWeekCompare(window._wcLastData);
+}
+
 // ── Page switching ────────────────────────
 function switchPage(page) {
   document.getElementById('mainTopbar').style.display     = page === 'schedule'   ? '' : 'none';
@@ -2052,7 +2610,9 @@ function switchPage(page) {
   document.getElementById('pageCollectors').style.display = page === 'collectors' ? '' : 'none';
   document.getElementById('pageTrend').style.display      = page === 'trend'      ? '' : 'none';
   document.getElementById('pageOverview').style.display   = page === 'overview'   ? '' : 'none';
-  document.querySelectorAll('.sidebar-item[data-page]').forEach(el =>
+  document.getElementById('pageDelivery').style.display    = page === 'delivery'    ? '' : 'none';
+  document.getElementById('pageWeekCompare').style.display = page === 'weekcompare' ? '' : 'none';
+  document.querySelectorAll('.nav-item[data-page]').forEach(el =>
     el.classList.toggle('active', el.dataset.page === page));
   if (page === 'schedule') {
     schedInitPage();
@@ -2062,6 +2622,15 @@ function switchPage(page) {
   }
   if (page === 'trend') {
     loadTrend();
+  }
+  if (page === 'delivery') {
+    loadDeliveryData();
+  }
+  if (page === 'weekcompare') {
+    if (!document.getElementById('wcWeek').value) {
+      document.getElementById('wcWeek').value = _getCurrentISOWeek();
+    }
+    loadWeekCompare();
   }
   if (page === 'collectors') {
     if (!document.getElementById('collDate').value) {
@@ -2180,13 +2749,19 @@ function filterOutliers(data, metric) {
   return { filtered, removed };
 }
 
-async function loadTrend() {
-  const days   = document.getElementById('trendDays').value;
+async function loadTrend(force = false) {
   const status = document.getElementById('trendStatus');
-  status.textContent = '加载中…';
+  const updEl  = document.getElementById('trendUpdatedAt');
+  status.textContent = force ? '刷新中…' : '加载中…';
   try {
-    const r = await fetch(`/api/overview/daily-collect?days=${days}`);
-    _trendData = await r.json();
+    const url = force
+      ? '/api/overview/daily-collect?force=1'
+      : '/api/overview/daily-collect';
+    const r = await fetch(url);
+    const json = await r.json();
+    _trendData = json.data || json;   // 兼容旧格式
+    if (json.updated_at) updEl.textContent = '上次更新: ' + json.updated_at;
+    status.textContent = '';
     renderTrend();
   } catch(e) {
     status.textContent = '查询失败，请检查 VPN';
@@ -2196,78 +2771,100 @@ async function loadTrend() {
 function renderTrend() {
   if (!_trendData || !_trendData.length) return;
   const metric = document.getElementById('trendMetric').value;
+  const days   = parseInt(document.getElementById('trendDays').value) || 60;
   const DOW    = ['日','一','二','三','四','五','六'];
   const unit   = metric === 'hours' ? 'h' : '条';
 
-  const { filtered, removed } = filterOutliers(_trendData, metric);
+  // 按 days 过滤（缓存始终存 90 天）
+  const sliced = _trendData.slice(-days);
+  const { filtered, removed } = filterOutliers(sliced, metric);
   document.getElementById('trendStatus').textContent =
-    `共 ${_trendData.length} 天${removed ? `，已过滤 ${removed} 个异常天` : ''}`;
+    `共 ${sliced.length} 天${removed ? `，已过滤 ${removed} 个异常天` : ''}`;
 
-  const labels = filtered.map(r => r.date.slice(5));
-  const vals   = filtered.map(r => metric === 'hours' ? r.hours : r.cases);
+  const labels    = filtered.map(r => r.date.slice(5));
+  const vals      = filtered.map(r => metric === 'hours' ? r.hours    : r.cases);
+  const qcVals    = filtered.map(r => metric === 'hours' ? r.qc_hours : r.qc_cases);
 
-  // 汇总（仅统计未被过滤的天）
-  const nonNull  = vals.filter(v => v != null);
-  const nonZero  = nonNull.filter(v => v > 0);
-  const total    = nonNull.reduce((a, b) => a + (b || 0), 0);
-  const avgDay   = nonZero.length ? (total / nonZero.length) : 0;
-  const peak     = Math.max(...nonNull);
-  const peakIdx  = vals.indexOf(peak);
+  // 汇总
+  const nonZero = vals.filter(v => v > 0);
+  const total   = vals.reduce((a, b) => a + (b || 0), 0);
+  const avgDay  = nonZero.length ? total / nonZero.length : 0;
+  const peak    = Math.max(...vals);
+  const peakIdx = vals.indexOf(peak);
+  const qcTotal = qcVals.reduce((a, b) => a + (b || 0), 0);
   document.getElementById('trendSummary').innerHTML = [
-    ['总量',    `${metric==='hours'?total.toFixed(1):total} ${unit}`],
-    ['工作日均', `${metric==='hours'?avgDay.toFixed(1):avgDay.toFixed(0)} ${unit}`],
-    ['峰值',    `${metric==='hours'?peak.toFixed(1):peak} ${unit}（${filtered[peakIdx]?.date||''}）`],
-    ['有产出天', `${nonZero.length} 天`],
+    ['采集总量',  `${metric==='hours'?total.toFixed(1):total} ${unit}`],
+    ['工作日均',  `${metric==='hours'?avgDay.toFixed(1):avgDay.toFixed(0)} ${unit}`],
+    ['峰值',     `${metric==='hours'?peak.toFixed(1):peak} ${unit}（${filtered[peakIdx]?.date||''}）`],
+    ['质检通过',  `${metric==='hours'?qcTotal.toFixed(1):qcTotal} ${unit}`],
   ].map(([k,v])=>`<div class="card" style="padding:12px 18px;min-width:120px">
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${k}</div>
     <div style="font-size:18px;font-weight:600">${v}</div>
   </div>`).join('');
 
-  // Chart
+  // Chart：柱(采集) + 折线(质检)
   const canvas = document.getElementById('trendChart');
   if (_trendChart) _trendChart.destroy();
   const bgColors = filtered.map(r => new Date(r.date+'T00:00:00Z').getUTCDay()===0
-    ? 'rgba(99,102,241,.2)' : 'rgba(22,119,255,.6)');
+    ? 'rgba(99,102,241,.2)' : 'rgba(22,119,255,.5)');
   _trendChart = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: { labels, datasets: [{
-      label: `每日采集完成 (${unit})`,
-      data: vals,
-      backgroundColor: bgColors,
-      borderWidth: 0,
-    }]},
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: `采集完成`,
+          data: vals,
+          backgroundColor: bgColors,
+          borderWidth: 0,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: `质检通过`,
+          data: qcVals,
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,.1)',
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          tension: 0.3,
+          fill: false,
+          yAxisID: 'y',
+        }
+      ]
+    },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 12 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.parsed.y != null
-              ? `${ctx.parsed.y.toFixed(metric==='hours'?1:0)} ${unit}`
-              : '（已过滤）'
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(metric==='hours'?1:0) : '—'} ${unit}`
           }
         }
       },
       scales: {
         x: { ticks: { maxTicksLimit: 20, font: { size: 11 } }, grid: { color: 'rgba(99,102,241,.1)' } },
-        y: { beginAtZero: true, title: { display: true, text: unit },
-             grid: { color: 'rgba(99,102,241,.1)' } }
+        y: { beginAtZero: true, title: { display: true, text: unit }, grid: { color: 'rgba(99,102,241,.1)' } }
       }
     }
   });
 
   // Table
   let html = `<table class="ant-table"><thead><tr>
-    <th>日期</th><th>周</th><th class="num">采集完成 (${unit})</th>
+    <th>日期</th><th>周</th><th class="num">采集完成 (${unit})</th><th class="num">质检通过 (${unit})</th>
   </tr></thead><tbody>`;
   filtered.slice().reverse().forEach(r => {
     const d = new Date(r.date + 'T00:00:00Z');
     const sun = d.getUTCDay() === 0;
     const dimStyle = sun ? ' style="color:#475569"' : '';
-    const val = metric === 'hours' ? r.hours : r.cases;
+    const val   = metric === 'hours' ? r.hours    : r.cases;
+    const qcVal = metric === 'hours' ? r.qc_hours : r.qc_cases;
     html += `<tr><td${dimStyle}>${r.date}</td><td${dimStyle}>周${DOW[d.getUTCDay()]}</td>
-      <td class="num">${val != null && val > 0 ? (metric==='hours'?val.toFixed(1):val) : '—'}</td>
+      <td class="num">${val  > 0 ? (metric==='hours'?val.toFixed(1):val)   : '—'}</td>
+      <td class="num" style="color:#34d399">${qcVal > 0 ? (metric==='hours'?qcVal.toFixed(1):qcVal) : '—'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -2293,7 +2890,14 @@ const schedState = {
 onConfigChange();
 renderAll();
 if (!state.schedule.length) fillDays();
-switchPage('schedule');
+switchPage('collectors');
+
+// 采集详情：每小时自动刷新当天数据
+setInterval(() => {
+  const d = document.getElementById('collDate').value;
+  const today = new Date().toISOString().slice(0, 10);
+  if (d === today) loadCollectors();
+}, 3600 * 1000);
 
 
 // ══════════════════════════════════════════════════════════════
@@ -2778,6 +3382,383 @@ function schedImportVendors() {
   };
   input.click();
 }
+
+// ══════════════════════════════════════════════════════════════
+//  交付进度
+// ══════════════════════════════════════════════════════════════
+
+let _deliveryData = {};
+let _deliveryPollTimer = null;
+
+async function loadDeliveryData() {
+  try {
+    const res = await fetch('/api/delivery/data');
+    const json = await res.json();
+    _deliveryData = json.projects || {};
+    const refreshing = json.refreshing;
+    renderDeliveryCards();
+    updateDeliveryRefreshingTip(refreshing);
+
+    // 如果所有项目都没有数据，说明还在初次加载
+    const hasAny = Object.values(_deliveryData).some(p => p.data);
+    if (!hasAny || refreshing) {
+      if (!_deliveryPollTimer) {
+        _deliveryPollTimer = setInterval(() => {
+          fetch('/api/delivery/data').then(r => r.json()).then(j => {
+            _deliveryData = j.projects || {};
+            renderDeliveryCards();
+            updateDeliveryRefreshingTip(j.refreshing);
+            if (!j.refreshing && Object.values(_deliveryData).some(p => p.data)) {
+              clearInterval(_deliveryPollTimer);
+              _deliveryPollTimer = null;
+            }
+          });
+        }, 30000);
+      }
+    }
+  } catch(e) {
+    document.getElementById('deliveryEmpty').style.display = '';
+    document.getElementById('deliveryCards').innerHTML = '';
+  }
+}
+
+function updateDeliveryRefreshingTip(refreshing) {
+  document.getElementById('deliveryRefreshingTip').style.display = refreshing ? '' : 'none';
+  document.getElementById('deliveryRefreshBtn').disabled = refreshing;
+}
+
+function _dedupDesc(cfg) {
+  if (!cfg.dedup_by_producer_scene) return null;
+  const mode = cfg.dedup_mode === 'task' ? '同 task 去重' : '同 task + 采集员去重';
+  const cap = cfg.dedup_task_cap_hours != null ? `，单条 task 上限 ${cfg.dedup_task_cap_hours}h` : '';
+  return mode + cap;
+}
+
+function renderDeliveryCards() {
+  const container = document.getElementById('deliveryCards');
+  const empty = document.getElementById('deliveryEmpty');
+  const entries = Object.entries(_deliveryData);
+  if (!entries.length) { empty.style.display = ''; container.innerHTML = ''; return; }
+
+  const hasData = entries.some(([,p]) => p.data);
+  if (!hasData) {
+    empty.style.display = '';
+    container.innerHTML = '';
+    document.getElementById('deliveryUpdatedAt').textContent = '首次加载中，约需 10 分钟…';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const useDedup = document.getElementById('deliveryDedupToggle')?.checked;
+
+  // 找最早更新时间
+  const times = entries.map(([,p]) => p.updated_at).filter(Boolean);
+  if (times.length) document.getElementById('deliveryUpdatedAt').textContent = '更新于 ' + times[0];
+
+  container.innerHTML = entries.map(([name, proj]) => {
+    const cfg = proj.config || {};
+    const data = proj.data;
+    if (!data) return `
+      <div class="dv-card" onclick="expandDelivery('${name}')">
+        <div class="dv-card-name">${cfg.display_name || name}</div>
+        <div style="color:#64748b;font-size:12px;margin-top:8px">数据加载中…</div>
+      </div>`;
+
+    const knownData = data.projects?.[name]?.known || {};
+    const hasDedup = !!(knownData.packed_dedup);
+    const pk = (useDedup && knownData.packed_dedup)   ? 'packed_dedup'   : 'packed';
+    const qk = (useDedup && knownData.qc_pass_dedup)  ? 'qc_pass_dedup'  : 'qc_pass';
+    const lk = (useDedup && knownData.lab_done_dedup) ? 'lab_done_dedup' : 'lab_done';
+
+    // 计算总打包时长和目标
+    const packed = knownData[pk] || {};
+    const packedH = Object.values(packed).reduce((s, v) => s + (v.hours || 0), 0);
+    const targetH = cfg.base_total_hours || 0;
+    const pct = targetH > 0 ? Math.min(100, packedH / targetH * 100) : null;
+
+    // 质检通过
+    const qcPass = knownData[qk] || {};
+    const qcH = Object.values(qcPass).reduce((s, v) => s + (v.hours || 0), 0);
+    // 标注完成
+    const labDone = knownData[lk] || {};
+    const labH = Object.values(labDone).reduce((s, v) => s + (v.hours || 0), 0);
+
+    // 去重规则 tooltip
+    const dedupDesc = _dedupDesc(cfg);
+    const dedupBadge = (useDedup && hasDedup && dedupDesc)
+      ? `<span style="font-size:10px;color:#818cf8;background:rgba(99,102,241,.12);border-radius:4px;padding:1px 6px;cursor:default" title="${dedupDesc}">去重</span>`
+      : (!hasDedup && useDedup ? '' : '');
+
+    // 交付日期剩余天数
+    const delivDate = cfg.delivery_date && cfg.delivery_date !== '待定' ? cfg.delivery_date : null;
+    let daysLeft = null, daysColor = '#94a3b8';
+    if (delivDate) {
+      daysLeft = Math.ceil((new Date(delivDate) - new Date()) / 86400000);
+      daysColor = daysLeft <= 3 ? '#ef4444' : daysLeft <= 7 ? '#f59e0b' : '#34d399';
+    }
+
+    const progressBar = pct !== null ? `
+      <div style="margin:10px 0 4px;background:#0f172a;border-radius:4px;height:6px;overflow:hidden">
+        <div style="width:${pct.toFixed(1)}%;height:100%;background:${pct>=80?'#34d399':pct>=50?'#f59e0b':'#3b82f6'};border-radius:4px"></div>
+      </div>
+      <div style="font-size:11px;color:#94a3b8">${packedH.toFixed(1)}h / ${targetH}h（${pct.toFixed(1)}%）</div>
+    ` : `<div style="font-size:11px;color:#64748b;margin-top:6px">无目标时长</div>`;
+
+    return `
+      <div class="dv-card" onclick="expandDelivery('${name}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="dv-card-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${cfg.display_name || name}</div>
+          ${daysLeft !== null ? `<div style="font-size:12px;color:${daysColor};font-weight:600;white-space:nowrap;margin-left:6px">${daysLeft > 0 ? daysLeft+'天后交付' : daysLeft === 0 ? '今日交付' : '已逾期'+Math.abs(daysLeft)+'天'}</div>` : ''}
+        </div>
+        ${progressBar}
+        ${dedupBadge ? `<div style="margin:4px 0 -4px">${dedupBadge}</div>` : ''}
+        <div style="display:flex;gap:0;margin-top:10px;justify-content:space-between">
+          <div style="text-align:center;flex:1">
+            <div style="font-size:14px;font-weight:600;color:#38bdf8">${qcH.toFixed(0)}h</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">质检通过</div>
+          </div>
+          <div style="text-align:center;flex:1">
+            <div style="font-size:14px;font-weight:600;color:#a78bfa">${labH.toFixed(0)}h</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">标注完成</div>
+          </div>
+          <div style="text-align:center;flex:1">
+            <div style="font-size:14px;font-weight:600;color:#34d399">${packedH.toFixed(0)}h</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">打包成功</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function expandDelivery(name) {
+  const proj = _deliveryData[name];
+  if (!proj || !proj.data) return;
+  const cfg = proj.config || {};
+  const knownData = proj.data.projects?.[name]?.known || {};
+  const unknown = proj.data.projects?.[name]?.unknown || {};
+  const scenes = cfg.scenes || [];
+  const sceneNames = scenes.map(s => s.name);
+  const useDedup = document.getElementById('deliveryDedupToggle')?.checked;
+  const hasDedup = !!(knownData.packed_dedup);
+  const pk = (useDedup && knownData.packed_dedup)   ? 'packed_dedup'   : 'packed';
+  const qk = (useDedup && knownData.qc_pass_dedup)  ? 'qc_pass_dedup'  : 'qc_pass';
+  const lk = (useDedup && knownData.lab_done_dedup) ? 'lab_done_dedup' : 'lab_done';
+
+  // 去重说明条
+  const dedupDesc = _dedupDesc(cfg);
+  const dedupInfoBar = (useDedup && hasDedup && dedupDesc)
+    ? `<div style="margin-bottom:10px;padding:6px 12px;background:rgba(99,102,241,.1);border-radius:6px;font-size:12px;color:#818cf8">去重规则：${dedupDesc}</div>`
+    : '';
+
+  // 所有已知环境
+  const allEnvs = new Set();
+  [pk,'sem_ing','sem_done','pose_ing','pose_done',lk,'qc_scene',qk].forEach(k => Object.keys(knownData[k]||{}).forEach(e => allEnvs.add(e)));
+
+  // 一、交付进度统计
+  const hc = (k, env) => {
+    const d = knownData[k]?.[env] || {};
+    const h = (d.hours || 0).toFixed(1);
+    const c = d.cnt || 0;
+    return `${h}h <span style="color:#64748b;font-size:11px">(${c}条)</span>`;
+  };
+  let progressRows = '';
+  for (const env of allEnvs) {
+    const pkH   = (knownData[pk]?.[env]?.hours || 0).toFixed(1);
+    const scene = scenes.find(s => s.name === env);
+    const targetH = scene?.target_hours || null;
+    const pct = targetH ? (parseFloat(pkH)/targetH*100).toFixed(1)+'%' : '—';
+    const tgtStr = targetH ? targetH+'h' : '—';
+    progressRows += `<tr>
+      <td>${env}</td>
+      <td>${hc(qk, env)}</td>
+      <td>${hc('pose_ing', env)}</td>
+      <td>${hc('pose_done', env)}</td>
+      <td>${hc('sem_ing', env)}</td>
+      <td>${hc('sem_done', env)}</td>
+      <td>${hc(lk, env)}</td>
+      <td>${hc(pk, env)}</td>
+      <td>${tgtStr}</td>
+      <td style="color:${parseFloat(pct)>=80?'#34d399':parseFloat(pct)>=50?'#f59e0b':'#e2e8f0'}">${pct}</td>
+    </tr>`;
+  }
+
+  // 二、质检统计
+  let qcRows = '';
+  for (const env of allEnvs) {
+    const qs = knownData.qc_scene?.[env] || {};
+    const inspH = (qs.pending_inspect_h||0).toFixed(1);
+    const sampH = (qs.pending_sampling_h||0).toFixed(1);
+    const inspCnt = qs.pending_inspect_cnt || 0;
+    const sampCnt = qs.pending_sampling_cnt || 0;
+    const pass = qs.pass || 0;
+    const fail = qs.fail || 0;
+    const passH = (qs.pass_h || 0).toFixed(1);
+    const failH = (qs.fail_h || 0).toFixed(1);
+    const total = pass + fail;
+    const rate = total > 0 ? (pass/total*100).toFixed(1)+'%' : '—';
+    qcRows += `<tr>
+      <td>${env}</td>
+      <td>${inspH}h <span style="color:#64748b;font-size:11px">(${inspCnt}条)</span></td>
+      <td>${sampH}h <span style="color:#64748b;font-size:11px">(${sampCnt}条)</span></td>
+      <td>${passH}h <span style="color:#64748b;font-size:11px">(${pass}条)</span></td>
+      <td>${failH}h <span style="color:#64748b;font-size:11px">(${fail}条)</span></td>
+      <td style="color:${parseFloat(rate)>=80?'#34d399':parseFloat(rate)>=60?'#f59e0b':'#ef4444'}">${rate}</td>
+    </tr>`;
+  }
+
+  const unknownWarn = Object.keys(unknown).length ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#1e293b;border-radius:8px;border-left:3px solid #f59e0b;font-size:12px;color:#94a3b8">
+      ⚠️ 未识别环境（未纳入统计）：${Object.entries(unknown).map(([k,v])=>`${k}(${(v.hours||0).toFixed(1)}h)`).join('、')}
+    </div>` : '';
+
+  const tblStyle = 'width:100%;border-collapse:collapse;font-size:13px;margin-top:8px';
+  const thStyle = 'padding:8px 10px;text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06);';
+  const tdStyle = 'padding:7px 10px;border-bottom:1px solid rgba(99,102,241,.08);color:#e2e8f0';
+
+  document.getElementById('deliveryDetailTitle').textContent = cfg.display_name || name;
+  document.getElementById('deliveryDetailContent').innerHTML = `
+    ${dedupInfoBar}
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px">一、交付进度统计</div>
+    <table style="${tblStyle}">
+      <thead><tr>
+        <th style="${thStyle}">环境</th><th style="${thStyle}">质检通过</th>
+        <th style="${thStyle}">手势标注中</th><th style="${thStyle}">手势标注完成</th>
+        <th style="${thStyle}">语义标注中</th><th style="${thStyle}">语义标注完成</th>
+        <th style="${thStyle}">标注完成</th><th style="${thStyle}">打包成功</th>
+        <th style="${thStyle}">目标</th><th style="${thStyle}">进度</th>
+      </tr></thead>
+      <tbody id="dvProgressBody">${progressRows.replace(/padding:[^;]+;/g, tdStyle.replace('padding:7px 10px;',''))}</tbody>
+    </table>
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin:18px 0 6px">二、质检统计</div>
+    <table style="${tblStyle}">
+      <thead><tr>
+        <th style="${thStyle}">环境</th><th style="${thStyle}">待质检</th><th style="${thStyle}">待抽检</th>
+        <th style="${thStyle}">质检通过</th><th style="${thStyle}">质检失败</th><th style="${thStyle}">质检通过率</th>
+      </tr></thead>
+      <tbody>${qcRows.replace(/padding:[^;]+;/g, tdStyle.replace('padding:7px 10px;',''))}</tbody>
+    </table>
+    ${unknownWarn}
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin:18px 0 10px">三、每日趋势</div>
+    <div id="dvLabChart"></div>
+  `;
+
+  // 折线图（3条线）
+  const labDaily     = knownData.lab_done_daily     || [];
+  const collectDaily = knownData.collect_done_daily || [];
+  const qcDaily      = knownData.qc_pass_daily      || [];
+  renderLabDailyChart(collectDaily, qcDaily, labDaily);
+
+  // 重新应用 td 样式（简化处理：直接用 CSS）
+  document.getElementById('deliveryDetail').querySelectorAll('td').forEach(td => {
+    td.style.padding = '7px 10px';
+    td.style.borderBottom = '1px solid rgba(99,102,241,.08)';
+    if (!td.style.color) td.style.color = '#e2e8f0';
+  });
+
+  document.getElementById('deliveryDetail').style.display = '';
+  document.getElementById('deliveryDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function renderLabDailyChart(collectData, qcData, labData) {
+  const el = document.getElementById('dvLabChart');
+  if (!el) return;
+
+  const series = [
+    { data: collectData || [], color: '#38bdf8', label: '采集完成' },
+    { data: qcData      || [], color: '#34d399', label: '质检通过' },
+    { data: labData     || [], color: '#a78bfa', label: '标注完成' },
+  ].filter(s => s.data.length);
+
+  if (!series.length) {
+    el.innerHTML = '<div style="color:#475569;font-size:12px;padding:16px 0">暂无数据</div>';
+    return;
+  }
+
+  const allDates = [...new Set(series.flatMap(s => s.data.map(d => d.date)))].sort();
+
+  const savedRange = localStorage.getItem('dvDailyRange') || '7';
+  const range = savedRange;
+
+  const cutoff = range === 'all' ? null : (() => {
+    const d = new Date(); d.setDate(d.getDate() - (parseInt(range) - 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const visibleDates = cutoff ? allDates.filter(d => d >= cutoff) : allDates;
+
+  const thStyle = 'padding:5px 12px;font-size:11px;font-weight:500;text-align:center;border-bottom:1px solid rgba(99,102,241,.15);white-space:nowrap';
+  const tdBase  = 'padding:4px 12px;font-size:12px;text-align:center;border-bottom:1px solid rgba(99,102,241,.06);white-space:nowrap;font-variant-numeric:tabular-nums';
+
+  const headers = series.map(s =>
+    `<th style="${thStyle};color:${s.color}">${s.label}</th>`
+  ).join('');
+
+  const rows = visibleDates.map(date => {
+    const cells = series.map(({ data }) => {
+      const row = data.find(d => d.date === date);
+      if (!row) return `<td style="${tdBase};color:#334155">—</td>`;
+      return `<td style="${tdBase};color:#e2e8f0">${row.hours.toFixed(1)}h <span style="color:#64748b;font-size:11px">${row.cnt}条</span></td>`;
+    }).join('');
+    return `<tr><td style="${tdBase};color:#94a3b8;font-size:11px">${date}</td>${cells}</tr>`;
+  }).join('');
+
+  const btnStyle = (val) => `cursor:pointer;padding:2px 10px;border-radius:4px;font-size:11px;border:1px solid rgba(99,102,241,.3);
+    background:${range===val?'rgba(99,102,241,.25)':'transparent'};color:${range===val?'#c7d2fe':'#64748b'}`;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="font-size:11px;color:#475569">显示：</span>
+      ${['7','30','all'].map(v =>
+        `<button onclick="_setDvRange('${v}')" style="${btnStyle(v)}">${v==='7'?'近7天':v==='30'?'近30天':'全部'}</button>`
+      ).join('')}
+    </div>
+    <table style="width:auto;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thStyle};color:#64748b">日期</th>${headers}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // 存最新的 series 数据供切换用
+  el._collectData = collectData;
+  el._qcData = qcData;
+  el._labData = labData;
+}
+
+function _setDvRange(val) {
+  localStorage.setItem('dvDailyRange', val);
+  const el = document.getElementById('dvLabChart');
+  if (el) renderLabDailyChart(el._collectData, el._qcData, el._labData);
+}
+
+function closeDeliveryDetail() {
+  document.getElementById('deliveryDetail').style.display = 'none';
+}
+
+async function triggerDeliveryRefresh() {
+  const btn = document.getElementById('deliveryRefreshBtn');
+  btn.disabled = true;
+  await fetch('/api/delivery/refresh', {method:'POST'});
+  updateDeliveryRefreshingTip(true);
+  // 启动轮询
+  if (!_deliveryPollTimer) {
+    _deliveryPollTimer = setInterval(() => {
+      fetch('/api/delivery/data').then(r => r.json()).then(j => {
+        _deliveryData = j.projects || {};
+        renderDeliveryCards();
+        updateDeliveryRefreshingTip(j.refreshing);
+        if (!j.refreshing) {
+          clearInterval(_deliveryPollTimer);
+          _deliveryPollTimer = null;
+        }
+      });
+    }, 30000);
+  }
+}
+
+// 检查是否管理员，控制账号管理入口显示
+fetch('/api/auth/me').then(r => r.json()).then(d => {
+  if (d.admin) document.getElementById('accountsLink').style.display = 'block';
+});
 </script>
 </body>
 </html>

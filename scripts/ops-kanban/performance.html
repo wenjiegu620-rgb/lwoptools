@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人员绩效统计</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    .header { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .filters label { font-size: 13px; color: #94a3b8; }
+    .input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+    .btn { background: #3b82f6; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn:hover { background: #2563eb; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab { background: #1e293b; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .tab.active { background: #3b82f6; }
+    .card { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; }
+    th { background: #0f172a; font-weight: 600; font-size: 13px; color: #94a3b8; }
+    td { font-size: 13px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .green { color: #4ade80; }
+    .red { color: #f87171; }
+    .yellow { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 人员绩效统计</h1>
+      <div class="filters">
+        <label>开始日期</label>
+        <input type="date" id="startDate" class="input">
+        <label>结束日期</label>
+        <input type="date" id="endDate" class="input">
+        <label>用户组</label>
+        <select id="groupSelect" class="input" style="width:150px">
+          <option value="">全部</option>
+          <option value="聚航">聚航</option>
+          <option value="梵科云">梵科云</option>
+          <option value="嘉创">嘉创</option>
+          <option value="泰国LA">泰国LA</option>
+          <option value="数曙-马来">数曙-马来</option>
+          <option value="山西BY">山西BY</option>
+        </select>
+        <button class="btn" onclick="loadData()">🔍 查询</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('collector')">采集员统计</div>
+      <div class="tab" onclick="switchTab('inspector')">质检员统计</div>
+    </div>
+
+    <div id="collectorTab">
+      <div class="card">
+        <div class="card-title">采集员绩效</div>
+        <div style="overflow-x:auto">
+          <table id="collectorTable">
+            <thead>
+              <tr>
+                <th>采集员</th>
+                <th>用户组</th>
+                <th class="num">采集总数</th>
+                <th class="num">质检通过率</th>
+                <th class="num">抽检通过率</th>
+                <th class="num">质检通过时长(h)</th>
+                <th class="num">抽检通过时长(h)</th>
+                <th class="num">日均通过时长(h)</th>
+                <th class="num">工作时长(h)</th>
+                <th class="num">采集效率</th>
+                <th>Top问题</th>
+              </tr>
+            </thead>
+            <tbody id="collectorBody">
+              <tr><td colspan="11" style="text-align:center;padding:40px;color:#64748b">点击查询加载数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="inspectorTab" style="display:none">
+      <div class="card">
+        <div class="card-title">质检员绩效</div>
+        <p style="color:#64748b;font-size:13px">开发中...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 初始化日期
+    const today = new Date().toISOString().slice(0,10);
+    const monthAgo = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+    document.getElementById('startDate').value = monthAgo;
+    document.getElementById('endDate').value = today;
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('collectorTab').style.display = tab === 'collector' ? '' : 'none';
+      document.getElementById('inspectorTab').style.display = tab === 'inspector' ? '' : 'none';
+    }
+
+    async function loadData() {
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      const group = document.getElementById('groupSelect').value;
+
+      const params = new URLSearchParams({ start_date: start, end_date: end });
+      if (group) params.append('group', group);
+
+      try {
+        const res = await fetch('/api/collector-stats?' + params);
+        const data = await res.json();
+        renderCollectorTable(data.collectors || []);
+      } catch(e) {
+        alert('加载失败: ' + e.message);
+      }
+    }
+
+    function renderCollectorTable(collectors) {
+      const tbody = document.getElementById('collectorBody');
+      if (!collectors.length) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:#64748b">无数据</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = collectors.map(c => {
+        const qcRate = c.qc_pass_rate || 0;
+        const samplingRate = c.sampling_pass_rate || 0;
+        const qcColor = qcRate >= 90 ? 'green' : qcRate >= 70 ? 'yellow' : 'red';
+        const samplingColor = samplingRate >= 90 ? 'green' : samplingRate >= 70 ? 'yellow' : 'red';
+
+        return `<tr>
+          <td>${c.name}</td>
+          <td>${c.group || '—'}</td>
+          <td class="num">${c.total_cases || 0}</td>
+          <td class="num ${qcColor}">${qcRate.toFixed(1)}%</td>
+          <td class="num ${samplingColor}">${samplingRate.toFixed(1)}%</td>
+          <td class="num">${(c.total_qc_hours || 0).toFixed(1)}</td>
+          <td class="num">${(c.total_sampling_hours || 0).toFixed(1)}</td>
+          <td class="num">${(c.avg_daily_hours || 0).toFixed(1)}</td>
+          <td class="num" style="color:#94a3b8">待接入</td>
+          <td class="num" style="color:#94a3b8">待接入</td>
+          <td style="font-size:11px">${(c.top5_errors || []).slice(0,3).map(e => `${e.error}(${e.cnt})`).join('、') || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+  </script>
+</body>
+</html>
