@@ -82,6 +82,10 @@ MYSQL = dict(
 def mysql():
     return pymysql.connect(**MYSQL)
 
+# 采集统计中排除的废弃项目（新库 project_uuid）
+_EXCLUDED_PROJECT_UUIDS = {'73234c27-bb25-4831-98ac-d2d762ec0175'}
+_EXCL_UUID_CLAUSE = "AND hc.project_uuid NOT IN (" + ",".join(f"'{u}'" for u in _EXCLUDED_PROJECT_UUIDS) + ")"
+
 # ─── MySQL 新库（human_case，0403+ 新项目） ───────────────────
 MYSQL_NEW = dict(
     host=os.environ.get("MYSQL_NEW_HOST", "rr-uf6y79x928m716yju.mysql.rds.aliyuncs.com"), port=int(os.environ.get("MYSQL_NEW_PORT", 3306)),
@@ -96,201 +100,334 @@ def mysql_new():
 
 
 def _query_new_db_daily(date_str, group=None):
-    """从新库查当日采集/质检数据，格式与旧库一致。group=None 时查全部供应商"""
-    conn = mysql_new()
-    try:
-        with conn.cursor() as cur:
-            group_clause = "AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) = %s" if group else ""
-            args_produce = [date_str] + ([group] if group else [])
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS vendor,
-                    hcn.node_created_at AS t_start,
-                    hcn.node_updated_at AS t_end,
-                    IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0) AS vsec
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_produce_complete'
-                  AND hcn.node_status = 3
-                  AND DATE(hcn.node_updated_at) = %s
-                  {group_clause}
-                  AND hc.deleted_at IS NULL
-                ORDER BY producer, hcn.node_created_at
-            """, args_produce)
-            produce_rows = cur.fetchall()
+      """从新库查当日采集/质检数据。核心修复：所有统计先按 case 去重，再按 producer 聚合。"""
+      conn = mysql_new()
+      try:
+          with conn.cursor() as cur:
+              group_clause = "AND tag_info.vendor = %s" if group else ""
 
-            args_qc = [date_str, date_str] + ([group] if group else [])
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    COUNT(*) AS qc_total_cases,
-                    SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS qc_passed_cases,
-                    SUM(CASE WHEN q.passed = 1
-                        THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        ELSE 0 END) / 3600.0 AS qc_h,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS qc_total_h
-                FROM human_case hc
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                JOIN (
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) = %s
-                    UNION ALL
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) = %s
-                      AND NOT EXISTS (
-                          SELECT 1 FROM human_case_node s
-                          WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
-                      )
-                ) q ON q.human_case_id = hc.id
-                WHERE hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args_qc)
-            qc_map = {r["producer"]: {"qc_cases": int(r["qc_passed_cases"] or 0),
-                                       "qc_total": int(r["qc_total_cases"] or 0),
-                                       "qc_h": float(r["qc_h"] or 0),
-                                       "qc_total_h": float(r["qc_total_h"] or 0)} for r in cur.fetchall()}
+              tag_info_sql = """
+                  SELECT
+                      t.human_case_id,
+                      MAX(JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name'))) AS producer,
+                      MAX(JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group'))) AS vendor,
+                      MAX(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) AS vsec
+                  FROM human_case_tag t
+                  WHERE t.type = 'produce_tags'
+                  GROUP BY t.human_case_id
+              """
 
-            # 采集人效：今天采集的 case 里，已质检通过的时长（不限质检日期）
-            args_cqc = [date_str] + ([group] if group else [])
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    SUM(CASE
-                        WHEN _ns3.human_case_id IS NOT NULL
-                            THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        WHEN _ns_any.human_case_id IS NOT NULL
-                            THEN 0
-                        WHEN _ni3.human_case_id IS NOT NULL
-                            THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        ELSE 0
-                    END) / 3600.0 AS collect_qc_h
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                LEFT JOIN (SELECT DISTINCT human_case_id FROM human_case_node WHERE node_name='human_case_sampling' AND node_status=3) _ns3
-                    ON _ns3.human_case_id = hc.id
-                LEFT JOIN (SELECT DISTINCT human_case_id FROM human_case_node WHERE node_name='human_case_sampling') _ns_any
-                    ON _ns_any.human_case_id = hc.id
-                LEFT JOIN (SELECT DISTINCT human_case_id FROM human_case_node WHERE node_name='human_case_inspect' AND node_status=3) _ni3
-                    ON _ni3.human_case_id = hc.id
-                WHERE hcn.node_name = 'human_case_produce_complete'
-                  AND hcn.node_status = 3
-                  AND DATE(hcn.node_updated_at) = %s
-                  AND hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args_cqc)
-            collect_qc_map = {r["producer"]: float(r["collect_qc_h"] or 0) for r in cur.fetchall()}
+              prod_day_sql = """
+                  SELECT
+                      hcn.human_case_id,
+                      MIN(hcn.node_created_at) AS t_start,
+                      MAX(hcn.node_updated_at) AS t_end
+                  FROM human_case_node hcn
+                  WHERE hcn.node_name = 'human_case_produce_complete'
+                    AND hcn.node_status = 3
+                    AND DATE(hcn.node_updated_at) = %s
+                  GROUP BY hcn.human_case_id
+              """
 
-        return produce_rows, qc_map, collect_qc_map
-    except Exception:
-        return [], {}
-    finally:
-        conn.close()
+              qc_day_sql = """
+                  SELECT
+                      raw.human_case_id,
+                      MAX(raw.passed) AS passed
+                  FROM (
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_sampling'
+                        AND hcn.node_status IN (3, 4)
+                        AND DATE(hcn.node_updated_at) = %s
+
+                      UNION ALL
+
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_inspect'
+                        AND hcn.node_status IN (3, 4)
+                        AND DATE(hcn.node_updated_at) = %s
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM human_case_node s
+                            WHERE s.human_case_id = hcn.human_case_id
+                              AND s.node_name = 'human_case_sampling'
+                        )
+                  ) raw
+                  GROUP BY raw.human_case_id
+              """
+
+              qc_status_sql = """
+                  SELECT
+                      hcn_qc.human_case_id,
+                      MAX(CASE WHEN hcn_qc.node_name='human_case_sampling' AND hcn_qc.node_status=3 THEN 1 ELSE 0
+  END) AS sampling_status3,
+                      MAX(CASE WHEN hcn_qc.node_name='human_case_sampling' THEN 1 ELSE 0 END) AS sampling_any,
+                      MAX(CASE WHEN hcn_qc.node_name='human_case_inspect' AND hcn_qc.node_status=3 THEN 1 ELSE 0
+  END) AS inspect_status3,
+                      MAX(CASE WHEN hcn_qc.node_name='human_case_sampling' AND hcn_qc.node_status IN (3,4) THEN 1
+  ELSE 0 END) AS sampling_status34,
+                      MAX(CASE WHEN hcn_qc.node_name='human_case_inspect' AND hcn_qc.node_status IN (3,4) THEN 1
+  ELSE 0 END) AS inspect_status34
+                  FROM human_case_node hcn_qc
+                  WHERE hcn_qc.node_name IN ('human_case_sampling', 'human_case_inspect')
+                  GROUP BY hcn_qc.human_case_id
+              """
+
+              args_produce = [date_str] + ([group] if group else [])
+              cur.execute(f"""
+                  SELECT
+                      hc.id AS case_id,
+                      'new' AS db_source,
+                      tag_info.producer AS producer,
+                      tag_info.vendor AS vendor,
+                      prod.t_start AS t_start,
+                      prod.t_end AS t_end,
+                      tag_info.vsec AS vsec
+                  FROM human_case hc
+                  JOIN ({prod_day_sql}) prod
+                    ON prod.human_case_id = hc.id
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  ORDER BY tag_info.producer, prod.t_start
+              """, args_produce)
+              produce_rows = cur.fetchall()
+
+              args_qc = [date_str, date_str] + ([group] if group else [])
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      COUNT(*) AS qc_total_cases,
+                      SUM(q.passed) AS qc_passed_cases,
+                      SUM(CASE WHEN q.passed = 1 THEN tag_info.vsec ELSE 0 END) / 3600.0 AS qc_h,
+                      SUM(tag_info.vsec) / 3600.0 AS qc_total_h
+                  FROM human_case hc
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  JOIN ({qc_day_sql}) q
+                    ON q.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args_qc)
+              qc_map = {
+                  r["producer"]: {
+                      "qc_cases": int(r["qc_passed_cases"] or 0),
+                      "qc_total": int(r["qc_total_cases"] or 0),
+                      "qc_h": float(r["qc_h"] or 0),
+                      "qc_total_h": float(r["qc_total_h"] or 0),
+                  }
+                  for r in cur.fetchall()
+              }
+
+              args_cqc = [date_str] + ([group] if group else [])
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      SUM(CASE
+                          WHEN COALESCE(ns.sampling_status3, 0) = 1 THEN tag_info.vsec
+                          WHEN COALESCE(ns.sampling_any, 0) = 1 THEN 0
+                          WHEN COALESCE(ns.inspect_status3, 0) = 1 THEN tag_info.vsec
+                          ELSE 0
+                      END) / 3600.0 AS collect_qc_h,
+                      SUM(CASE
+                          WHEN COALESCE(ns.sampling_status34, 0) = 1 THEN tag_info.vsec
+                          WHEN COALESCE(ns.sampling_any, 0) = 1 THEN 0
+                          WHEN COALESCE(ns.inspect_status34, 0) = 1 THEN tag_info.vsec
+                          ELSE 0
+                      END) / 3600.0 AS collect_inspected_h
+                  FROM human_case hc
+                  JOIN ({prod_day_sql}) prod
+                    ON prod.human_case_id = hc.id
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  LEFT JOIN ({qc_status_sql}) ns
+                    ON ns.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args_cqc)
+              _cqc_rows = cur.fetchall()
+              collect_qc_map = {r["producer"]: float(r["collect_qc_h"] or 0) for r in _cqc_rows}
+              collect_inspected_map = {r["producer"]: float(r["collect_inspected_h"] or 0) for r in _cqc_rows}
+
+          produce_rows = _dedupe_produce_rows(produce_rows)
+          return produce_rows, qc_map, collect_qc_map, collect_inspected_map, {}, set(), {}, {}
+      except Exception:
+          import traceback
+          traceback.print_exc()
+          return [], {}, {}, {}, {}, set(), {}, {}
+      finally:
+          conn.close()
 
 
 def _query_new_db_cumul(group=None):
-    """从新库查累计数据，返回 5 元组格式与旧库一致。group=None 时查全部供应商"""
-    conn = mysql_new()
-    try:
-        with conn.cursor() as cur:
-            group_clause = "AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) = %s" if group else ""
-            args = ([group] if group else [])
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS total_collect_h,
-                    MIN(DATE(hcn.node_updated_at)) AS first_collect_date
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_produce_complete'
-                  AND hcn.node_status = 3
-                  AND hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args)
-            _vrows = cur.fetchall()
-            total_collect_map = {r["producer"]: float(r["total_collect_h"] or 0) for r in _vrows}
-            first_collect_map_v = {r["producer"]: str(r["first_collect_date"]) if r["first_collect_date"] else "" for r in _vrows}
+      """从新库查累计数据。核心修复：所有累计统计先按 case 去重。"""
+      conn = mysql_new()
+      try:
+          with conn.cursor() as cur:
+              group_clause = "AND tag_info.vendor = %s" if group else ""
+              args = ([group] if group else [])
 
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    COUNT(*) AS total_qc_total,
-                    SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS total_qc_passed,
-                    SUM(CASE WHEN q.passed = 1
-                        THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        ELSE 0 END) / 3600.0 AS total_qc_h,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS total_qc_total_h
-                FROM human_case hc
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                JOIN (
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                    UNION ALL
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                      AND NOT EXISTS (
-                          SELECT 1 FROM human_case_node s
-                          WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
-                      )
-                ) q ON q.human_case_id = hc.id
-                WHERE hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args)
-            total_qc_map = {r["producer"]: {
-                "total_qc_h": float(r["total_qc_h"] or 0),
-                "total_qc_passed": int(r["total_qc_passed"] or 0),
-                "total_qc_total": int(r["total_qc_total"] or 0),
-                "total_qc_total_h": float(r["total_qc_total_h"] or 0),
-            } for r in cur.fetchall()}
+              tag_info_sql = """
+                  SELECT
+                      t.human_case_id,
+                      MAX(JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name'))) AS producer,
+                      MAX(JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group'))) AS vendor,
+                      MAX(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) AS vsec
+                  FROM human_case_tag t
+                  WHERE t.type = 'produce_tags'
+                  GROUP BY t.human_case_id
+              """
 
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS pending_inspect_h
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_inspect'
-                  AND hcn.node_status IN (1, 2)
-                  AND hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args)
-            pending_inspect_map = {r["producer"]: float(r["pending_inspect_h"] or 0) for r in cur.fetchall()}
+              prod_all_sql = """
+                  SELECT
+                      hcn.human_case_id,
+                      MIN(DATE(hcn.node_updated_at)) AS first_collect_date
+                  FROM human_case_node hcn
+                  WHERE hcn.node_name = 'human_case_produce_complete'
+                    AND hcn.node_status = 3
+                  GROUP BY hcn.human_case_id
+              """
 
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS pending_sampling_h
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_sampling'
-                  AND hcn.node_status IN (1, 2)
-                  AND hc.deleted_at IS NULL
-                  {group_clause}
-                GROUP BY producer
-            """, args)
-            pending_sampling_map = {r["producer"]: float(r["pending_sampling_h"] or 0) for r in cur.fetchall()}
+              qc_all_sql = """
+                  SELECT
+                      raw.human_case_id,
+                      MAX(raw.passed) AS passed
+                  FROM (
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_sampling'
+                        AND hcn.node_status IN (3, 4)
 
-        return total_collect_map, total_qc_map, pending_inspect_map, pending_sampling_map, first_collect_map_v
-    except Exception:
-        return {}, {}, {}, {}, {}
-    finally:
-        conn.close()
+                      UNION ALL
+
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_inspect'
+                        AND hcn.node_status IN (3, 4)
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM human_case_node s
+                            WHERE s.human_case_id = hcn.human_case_id
+                              AND s.node_name = 'human_case_sampling'
+                        )
+                  ) raw
+                  GROUP BY raw.human_case_id
+              """
+
+              pending_inspect_sql = """
+                  SELECT DISTINCT hcn.human_case_id
+                  FROM human_case_node hcn
+                  WHERE hcn.node_name = 'human_case_inspect'
+                    AND hcn.node_status IN (1, 2)
+              """
+
+              pending_sampling_sql = """
+                  SELECT DISTINCT hcn.human_case_id
+                  FROM human_case_node hcn
+                  WHERE hcn.node_name = 'human_case_sampling'
+                    AND hcn.node_status IN (1, 2)
+              """
+
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      SUM(tag_info.vsec) / 3600.0 AS total_collect_h,
+                      MIN(prod.first_collect_date) AS first_collect_date
+                  FROM human_case hc
+                  JOIN ({prod_all_sql}) prod
+                    ON prod.human_case_id = hc.id
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args)
+              _vrows = cur.fetchall()
+              total_collect_map = {r["producer"]: float(r["total_collect_h"] or 0) for r in _vrows}
+              first_collect_map_v = {
+                  r["producer"]: str(r["first_collect_date"]) if r["first_collect_date"] else ""
+                  for r in _vrows
+              }
+
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      COUNT(*) AS total_qc_total,
+                      SUM(q.passed) AS total_qc_passed,
+                      SUM(CASE WHEN q.passed = 1 THEN tag_info.vsec ELSE 0 END) / 3600.0 AS total_qc_h,
+                      SUM(tag_info.vsec) / 3600.0 AS total_qc_total_h
+                  FROM human_case hc
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  JOIN ({qc_all_sql}) q
+                    ON q.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args)
+              total_qc_map = {
+                  r["producer"]: {
+                      "total_qc_h": float(r["total_qc_h"] or 0),
+                      "total_qc_passed": int(r["total_qc_passed"] or 0),
+                      "total_qc_total": int(r["total_qc_total"] or 0),
+                      "total_qc_total_h": float(r["total_qc_total_h"] or 0),
+                  }
+                  for r in cur.fetchall()
+              }
+
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      SUM(tag_info.vsec) / 3600.0 AS pending_inspect_h
+                  FROM human_case hc
+                  JOIN ({pending_inspect_sql}) pi
+                    ON pi.human_case_id = hc.id
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args)
+              pending_inspect_map = {
+                  r["producer"]: float(r["pending_inspect_h"] or 0)
+                  for r in cur.fetchall()
+              }
+
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      SUM(tag_info.vsec) / 3600.0 AS pending_sampling_h
+                  FROM human_case hc
+                  JOIN ({pending_sampling_sql}) ps
+                    ON ps.human_case_id = hc.id
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    {group_clause}
+                  GROUP BY tag_info.producer
+              """, args)
+              pending_sampling_map = {
+                  r["producer"]: float(r["pending_sampling_h"] or 0)
+                  for r in cur.fetchall()
+              }
+
+          return total_collect_map, total_qc_map, pending_inspect_map, pending_sampling_map, first_collect_map_v
+      except Exception:
+          return {}, {}, {}, {}, {}
+      finally:
+          conn.close()
 
 
 def _merge_float_map(m1, m2):
@@ -316,46 +453,126 @@ def _merge_date_map(m1, m2):
             merged[p] = v
     return merged
 
+def _dedupe_produce_rows(rows):
+      """按 (db_source, case_id) 去重，避免同一 case 被重复累计"""
+      merged = {}
+
+      for row in rows or []:
+          case_id = str(row.get("case_id") or "")
+          db_source = row.get("db_source") or "unknown"
+
+          # 兼容旧缓存里没有 case_id 的情况，退化成弱去重
+          if case_id:
+              key = (db_source, case_id)
+          else:
+              key = (
+                  db_source,
+                  row.get("producer"),
+                  row.get("vendor") or row.get("producer_group"),
+                  row.get("t_start"),
+                  row.get("t_end"),
+                  float(row.get("vsec") or 0),
+              )
+
+          if key not in merged:
+              merged[key] = dict(row)
+              continue
+
+          cur = merged[key]
+
+          if row.get("t_start") and (not cur.get("t_start") or row["t_start"] < cur["t_start"]):
+              cur["t_start"] = row["t_start"]
+          if row.get("t_end") and (not cur.get("t_end") or row["t_end"] > cur["t_end"]):
+              cur["t_end"] = row["t_end"]
+
+          cur_vsec = float(cur.get("vsec") or 0)
+          row_vsec = float(row.get("vsec") or 0)
+          if row_vsec > cur_vsec:
+              cur["vsec"] = row["vsec"]
+
+          if not cur.get("producer") and row.get("producer"):
+              cur["producer"] = row["producer"]
+          if not cur.get("vendor") and row.get("vendor"):
+              cur["vendor"] = row["vendor"]
+
+      result = list(merged.values())
+      result.sort(key=lambda r: (
+          str(r.get("producer") or ""),
+          r.get("t_start") or r.get("t_end") or datetime.min
+      ))
+      return result
 
 def _query_new_db_week_qc(week_start, date_str, producers):
-    """从新库查指定采集员在本周（week_start~date_str）的质检通过时长"""
-    if not producers:
-        return {}
-    conn = mysql_new()
-    try:
-        with conn.cursor() as cur:
-            ph = ",".join(["%s"] * len(producers))
-            cur.execute(f"""
-                SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    SUM(CASE WHEN q.passed = 1
-                        THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        ELSE 0 END) / 3600.0 AS week_qc_h
-                FROM human_case hc
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                JOIN (
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
-                    UNION ALL
-                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                    FROM human_case_node hcn
-                    WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
-                      AND hcn.human_case_id NOT IN (
-                          SELECT DISTINCT human_case_id FROM human_case_node WHERE node_name = 'human_case_sampling'
-                      )
-                ) q ON q.human_case_id = hc.id
-                WHERE hc.deleted_at IS NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) IN ({ph})
-                GROUP BY producer
-            """, [week_start, date_str, week_start, date_str] + producers)
-            return {r["producer"]: float(r["week_qc_h"] or 0) for r in cur.fetchall()}
-    except Exception:
-        return {}
-    finally:
-        conn.close()
+      """从新库查指定采集员在本周（week_start~date_str）的质检通过时长，先按 case 去重。"""
+      if not producers:
+          return {}
+
+      conn = mysql_new()
+      try:
+          with conn.cursor() as cur:
+              ph = ",".join(["%s"] * len(producers))
+
+              tag_info_sql = """
+                  SELECT
+                      t.human_case_id,
+                      MAX(JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name'))) AS producer,
+                      MAX(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) AS vsec
+                  FROM human_case_tag t
+                  WHERE t.type = 'produce_tags'
+                  GROUP BY t.human_case_id
+              """
+
+              qc_week_sql = """
+                  SELECT
+                      raw.human_case_id,
+                      MAX(raw.passed) AS passed
+                  FROM (
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_sampling'
+                        AND hcn.node_status IN (3, 4)
+                        AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
+
+                      UNION ALL
+
+                      SELECT
+                          hcn.human_case_id,
+                          CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                      FROM human_case_node hcn
+                      WHERE hcn.node_name = 'human_case_inspect'
+                        AND hcn.node_status IN (3, 4)
+                        AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM human_case_node s
+                            WHERE s.human_case_id = hcn.human_case_id
+                              AND s.node_name = 'human_case_sampling'
+                        )
+                  ) raw
+                  GROUP BY raw.human_case_id
+              """
+
+              cur.execute(f"""
+                  SELECT
+                      tag_info.producer AS producer,
+                      SUM(CASE WHEN q.passed = 1 THEN tag_info.vsec ELSE 0 END) / 3600.0 AS week_qc_h
+                  FROM human_case hc
+                  JOIN ({tag_info_sql}) tag_info
+                    ON tag_info.human_case_id = hc.id
+                  JOIN ({qc_week_sql}) q
+                    ON q.human_case_id = hc.id
+                  WHERE hc.deleted_at IS NULL
+                    AND tag_info.producer IN ({ph})
+                  GROUP BY tag_info.producer
+              """, [week_start, date_str, week_start, date_str] + producers)
+
+              return {r["producer"]: float(r["week_qc_h"] or 0) for r in cur.fetchall()}
+      except Exception:
+          return {}
+      finally:
+          conn.close()
 
 
 def _query_vendor_week_stats(week_start, week_end):
@@ -385,7 +602,7 @@ def _query_vendor_week_stats(week_start, week_end):
                        GROUP_CONCAT(DISTINCT hc.producer) AS producers
                 FROM human_cases hc
                 JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
-                WHERE hcn.node_name = 'human_case_produce_complete'
+                WHERE hcn.node_name = 'human_case_upload'
                   AND hcn.node_status = 3
                   AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
                   AND hc.deleted_at IS NULL
@@ -431,59 +648,59 @@ def _query_vendor_week_stats(week_start, week_end):
         import traceback; traceback.print_exc()
 
     # ── 新库 ──────────────────────────────────────────────────────
+    _w_start = week_start + " 00:00:00"
+    _w_end   = week_end   + " 23:59:59"
     try:
         conn = mysql_new()
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS vendor,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS collect_h,
-                    GROUP_CONCAT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name'))) AS producers
+                    ag.name AS vendor,
+                    SUM(IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)) / 3600.0 AS collect_h,
+                    GROUP_CONCAT(DISTINCT hc.producer) AS producers
                 FROM human_case hc
                 JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_produce_complete'
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                LEFT JOIN auth.users au ON au.name = hc.producer
+                LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
+                WHERE hcn.node_name = 'human_case_upload'
                   AND hcn.node_status = 3
-                  AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
-                  AND hc.deleted_at IS NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) IS NOT NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != 'null'
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != ''
-                GROUP BY vendor
-            """, [week_start, week_end])
+                  AND hcn.node_updated_at BETWEEN %s AND %s
+                  AND ag.name IS NOT NULL AND ag.name != ''
+                GROUP BY ag.name
+            """, [_w_start, _w_end])
             for r in cur.fetchall():
                 producers = set((r['producers'] or '').split(',')) if r['producers'] else set()
                 _merge(r['vendor'], float(r['collect_h'] or 0), producers, 0.0, 0.0)
 
             cur.execute("""
                 SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS vendor,
-                    SUM(CASE WHEN q.passed = 1
-                        THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        ELSE 0 END) / 3600.0 AS qc_pass_h,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS qc_total_h
+                    ag.name AS vendor,
+                    SUM(CASE WHEN q.passed = 1 THEN IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0) ELSE 0 END) / 3600.0 AS qc_pass_h,
+                    SUM(IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)) / 3600.0 AS qc_total_h
                 FROM human_case hc
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                LEFT JOIN auth.users au ON au.name = hc.producer
+                LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
                 JOIN (
                     SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
                     FROM human_case_node hcn
                     WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
+                      AND hcn.node_updated_at BETWEEN %s AND %s
                     UNION ALL
                     SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
                     FROM human_case_node hcn
                     WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                      AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
+                      AND hcn.node_updated_at BETWEEN %s AND %s
                       AND hcn.human_case_id NOT IN (
                           SELECT DISTINCT human_case_id FROM human_case_node WHERE node_name = 'human_case_sampling'
                       )
                 ) q ON q.human_case_id = hc.id
-                WHERE hc.deleted_at IS NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) IS NOT NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != 'null'
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != ''
-                GROUP BY vendor
-            """, [week_start, week_end, week_start, week_end])
+                WHERE ag.name IS NOT NULL AND ag.name != ''
+                GROUP BY ag.name
+            """, [_w_start, _w_end, _w_start, _w_end])
             for r in cur.fetchall():
                 v = r['vendor']
                 if v not in result:
@@ -521,7 +738,7 @@ def _query_vendor_daily_eff(week_start, week_end):
                        SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS collect_h
                 FROM human_cases hc
                 JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
-                WHERE hcn.node_name = 'human_case_produce_complete'
+                WHERE hcn.node_name = 'human_case_upload'
                   AND hcn.node_status = 3
                   AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
                   AND hc.deleted_at IS NULL
@@ -539,28 +756,30 @@ def _query_vendor_daily_eff(week_start, week_end):
         import traceback; traceback.print_exc()
 
     # ── 新库 ──────────────────────────────────────────────────────
+    _w_start2 = week_start + " 00:00:00"
+    _w_end2   = week_end   + " 23:59:59"
     try:
         conn = mysql_new()
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT DATE(hcn.node_updated_at) AS day,
-                       JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS vendor,
-                       JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
+                       ag.name AS vendor,
+                       hc.producer AS producer,
                        COUNT(*) AS cases,
-                       SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS collect_h
+                       SUM(IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)) / 3600.0 AS collect_h
                 FROM human_case hc
                 JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                WHERE hcn.node_name = 'human_case_produce_complete'
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                LEFT JOIN auth.users au ON au.name = hc.producer
+                LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
+                WHERE hcn.node_name = 'human_case_upload'
                   AND hcn.node_status = 3
-                  AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
-                  AND hc.deleted_at IS NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) IS NOT NULL
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != 'null'
-                  AND JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) != ''
-                GROUP BY day, vendor, producer
+                  AND hcn.node_updated_at BETWEEN %s AND %s
+                  AND ag.name IS NOT NULL AND ag.name != ''
+                GROUP BY day, ag.name, hc.producer
                 HAVING cases > 10
-            """, [week_start, week_end])
+            """, [_w_start2, _w_end2])
             for r in cur.fetchall():
                 day = str(r['day'])
                 v = r['vendor']
@@ -788,7 +1007,13 @@ def _check_auth():
         return None
     if request.path in ("/login", "/logout"):
         return None
+    if request.path.startswith("/dm") or request.path.startswith("/api/dm"):
+        return None
     if request.path.startswith("/admin") or request.path.startswith("/api/admin"):
+        return None
+    # cron token 豁免
+    _cron_token = os.environ.get("CRON_TOKEN", "")
+    if _cron_token and request.args.get("token") == _cron_token:
         return None
     if not KANBAN_PASSWORD:          # 未设置密码则不拦截
         return None
@@ -1051,7 +1276,7 @@ def vendor_collectors():
     date_str = request.args.get("date", str(date.today()))
 
     # 当日数据缓存 5 分钟，累计/待质检数据缓存 6 小时（内存+磁盘）
-    daily_cache_key = f"vendor_daily:{group}:{date_str}"
+    daily_cache_key = f"vendor_daily_v2:{group}:{date_str}"
     cumul_cache_key = f"vendor_cumul:{group}"
     cached_daily = _cache_get(daily_cache_key)
     cached_cumul = _cache_get(cumul_cache_key)
@@ -1065,93 +1290,122 @@ def vendor_collectors():
     try:
         with conn.cursor() as cur:
             if cached_daily:
-                if len(cached_daily) == 3:
+                if len(cached_daily) == 5:
+                    produce_rows, qc_map, collect_qc_map, collect_inspected_map, upload_h_map = cached_daily
+                elif len(cached_daily) == 4:
+                    produce_rows, qc_map, collect_qc_map, collect_inspected_map = cached_daily
+                    upload_h_map = {}
+                elif len(cached_daily) == 3:
                     produce_rows, qc_map, collect_qc_map = cached_daily
+                    collect_inspected_map = {}
+                    upload_h_map = {}
                 else:
                     produce_rows, qc_map = cached_daily
                     collect_qc_map = {}
+                    collect_inspected_map = {}
+                    upload_h_map = {}
+            
+            cur.execute("""
+                SELECT
+                    hc.id AS case_id,
+                    'old' AS db_source,
+                    hc.producer,
+                    hc.produced_by_group AS vendor,
+                    MIN(hcn.node_created_at) AS t_start,
+                    MAX(hcn.node_updated_at) AS t_end,
+                    MAX(IFNULL(hc.video_seconds, 0)) AS vsec
+                FROM human_cases hc
+                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                WHERE hcn.node_name = 'human_case_produce_complete'
+                  AND hcn.node_status = 3
+                  AND DATE(hcn.node_updated_at) = %s
+                  AND hc.deleted_at IS NULL
+                  AND hc.produced_by_group = %s
+                GROUP BY hc.id, hc.producer, hc.produced_by_group
+                ORDER BY hc.producer, MIN(hcn.node_created_at)
+            """, [date_str, group])
+            produce_rows = cur.fetchall()
+
+            if produce_rows:
+                      # 老库有数据时才跑 QC 查询（避免对 human_case_nodes 全表扫描）
+                      cur.execute("""
+                          SELECT hc.producer,
+                              COUNT(*) AS qc_total_cases,
+                              SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS qc_passed_cases,
+                              SUM(CASE WHEN q.passed = 1 THEN IFNULL(hc.video_seconds, 0) ELSE 0 END) / 3600.0 AS qc_h,
+                              SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS qc_total_h
+                          FROM human_cases hc
+                          JOIN (
+                              SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                              FROM human_case_nodes hcn
+                              WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
+                                AND DATE(hcn.node_updated_at) = %s
+                              UNION ALL
+                              SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                              FROM human_case_nodes hcn
+                              WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
+                                AND DATE(hcn.node_updated_at) = %s
+                                AND NOT EXISTS (
+                                    SELECT 1 FROM human_case_nodes s
+                                    WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
+                                )
+                          ) q ON q.human_case_id = hc.id
+                          WHERE hc.deleted_at IS NULL AND hc.produced_by_group = %s
+                          GROUP BY hc.producer
+                      """, [date_str, date_str, group])
+                      qc_map = {r["producer"]: {"qc_cases": int(r["qc_passed_cases"] or 0),
+                                                 "qc_total": int(r["qc_total_cases"] or 0),
+                                                 "qc_h": float(r["qc_h"] or 0),
+                                                 "qc_total_h": float(r["qc_total_h"] or 0)} for r in cur.fetchall()}
+
+                      cur.execute("""
+                          SELECT hc.producer,
+                              SUM(CASE
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling' AND node_status=3)
+                                      THEN IFNULL(hc.video_seconds, 0)
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling')
+                                      THEN 0
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_inspect' AND node_status=3)
+                                      THEN IFNULL(hc.video_seconds, 0)
+                                  ELSE 0
+                              END) / 3600.0 AS collect_qc_h,
+                              SUM(CASE
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling' AND node_status IN (3,4))
+                                      THEN IFNULL(hc.video_seconds, 0)
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling')
+                                      THEN 0
+                                  WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_inspect' AND node_status IN (3,4))
+                                      THEN IFNULL(hc.video_seconds, 0)
+                                  ELSE 0
+                              END) / 3600.0 AS collect_inspected_h
+                          FROM human_cases hc
+                          JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                          WHERE hcn.node_name = 'human_case_produce_complete'
+                            AND hcn.node_status = 3
+                            AND DATE(hcn.node_updated_at) = %s
+                            AND hc.deleted_at IS NULL
+                            AND hc.produced_by_group = %s
+                          GROUP BY hc.producer
+                      """, [date_str, group])
+                      _cqc_rows = cur.fetchall()
+                      collect_qc_map = {r["producer"]: float(r["collect_qc_h"] or 0) for r in _cqc_rows}
+                      collect_inspected_map = {r["producer"]: float(r["collect_inspected_h"] or 0) for r in _cqc_rows}
+                      upload_h_map = {}
             else:
-                cur.execute("""
-                    SELECT hc.producer, hc.produced_by_group AS vendor,
-                           hcn.node_created_at AS t_start, hcn.node_updated_at AS t_end,
-                           IFNULL(hc.video_seconds, 0) AS vsec
-                    FROM human_cases hc
-                    JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
-                    WHERE hcn.node_name = 'human_case_produce_complete'
-                      AND hcn.node_status = 3
-                      AND DATE(hcn.node_updated_at) = %s
-                      AND hc.deleted_at IS NULL
-                      AND hc.produced_by_group = %s
-                    ORDER BY hc.producer, hcn.node_created_at
-                """, [date_str, group])
-                produce_rows = cur.fetchall()
+                      qc_map = {}
+                      collect_qc_map = {}
+                      collect_inspected_map = {}
+                      upload_h_map = {}
 
-                if produce_rows:
-                    # 老库有数据时才跑 QC 查询（避免对 human_case_nodes 全表扫描）
-                    cur.execute("""
-                        SELECT hc.producer,
-                            COUNT(*) AS qc_total_cases,
-                            SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS qc_passed_cases,
-                            SUM(CASE WHEN q.passed = 1 THEN IFNULL(hc.video_seconds, 0) ELSE 0 END) / 3600.0 AS qc_h,
-                            SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS qc_total_h
-                        FROM human_cases hc
-                        JOIN (
-                            SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                            FROM human_case_nodes hcn
-                            WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                              AND DATE(hcn.node_updated_at) = %s
-                            UNION ALL
-                            SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                            FROM human_case_nodes hcn
-                            WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                              AND DATE(hcn.node_updated_at) = %s
-                              AND NOT EXISTS (
-                                  SELECT 1 FROM human_case_nodes s
-                                  WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
-                              )
-                        ) q ON q.human_case_id = hc.id
-                        WHERE hc.deleted_at IS NULL AND hc.produced_by_group = %s
-                        GROUP BY hc.producer
-                    """, [date_str, date_str, group])
-                    qc_map = {r["producer"]: {"qc_cases": int(r["qc_passed_cases"] or 0),
-                                               "qc_total": int(r["qc_total_cases"] or 0),
-                                               "qc_h": float(r["qc_h"] or 0),
-                                               "qc_total_h": float(r["qc_total_h"] or 0)} for r in cur.fetchall()}
-
-                    # 采集人效：今天采集的 case 里已质检通过的时长（不限质检日期）
-                    # 用 correlated EXISTS 替换全表扫 LEFT JOIN，利用 human_case_id 索引
-                    cur.execute("""
-                        SELECT hc.producer,
-                            SUM(CASE
-                                WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling' AND node_status=3)
-                                    THEN IFNULL(hc.video_seconds, 0)
-                                WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_sampling')
-                                    THEN 0
-                                WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id = hc.id AND node_name='human_case_inspect' AND node_status=3)
-                                    THEN IFNULL(hc.video_seconds, 0)
-                                ELSE 0
-                            END) / 3600.0 AS collect_qc_h
-                        FROM human_cases hc
-                        JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
-                        WHERE hcn.node_name = 'human_case_produce_complete'
-                          AND hcn.node_status = 3
-                          AND DATE(hcn.node_updated_at) = %s
-                          AND hc.deleted_at IS NULL
-                          AND hc.produced_by_group = %s
-                        GROUP BY hc.producer
-                    """, [date_str, group])
-                    collect_qc_map = {r["producer"]: float(r["collect_qc_h"] or 0) for r in cur.fetchall()}
-                else:
-                    qc_map = {}
-                    collect_qc_map = {}
-
-                # 合并新库当日数据
-                new_produce, new_qc, new_collect_qc = _query_new_db_daily(date_str, group=group)
-                produce_rows = list(produce_rows) + list(new_produce)
-                qc_map = _merge_qc_map(qc_map, new_qc)
-                collect_qc_map = _merge_float_map(collect_qc_map, new_collect_qc)
-                _cache_set(daily_cache_key, (produce_rows, qc_map, collect_qc_map), 300)  # 5 分钟
-
+                  # 合并新库当日数据
+            new_produce, new_qc, new_collect_qc, new_collect_inspected, new_upload_h, _wrist_uuids, _nwu, _npu = _query_new_db_daily(date_str, group=group)
+            produce_rows = _dedupe_produce_rows(list(produce_rows) + list(new_produce))
+            qc_map = _merge_qc_map(qc_map, new_qc)
+            collect_qc_map = _merge_float_map(collect_qc_map, new_collect_qc)
+            collect_inspected_map = _merge_float_map(collect_inspected_map, new_collect_inspected)
+            upload_h_map = _merge_float_map(upload_h_map, new_upload_h)
+            _cache_set(daily_cache_key, (produce_rows, qc_map, collect_qc_map, collect_inspected_map, upload_h_map), 300)
+            
             if cached_cumul:
                 if len(cached_cumul) == 5:
                     total_collect_map, total_qc_map, pending_inspect_map, pending_sampling_map, first_collect_map_v = cached_cumul
@@ -1245,6 +1499,8 @@ def vendor_collectors():
     finally:
         conn.close()
 
+    produce_rows = _dedupe_produce_rows(produce_rows)
+
     sessions_by_p = defaultdict(list)
     vsec_by_p = defaultdict(float)
     cases_by_p = defaultdict(int)
@@ -1294,7 +1550,9 @@ def vendor_collectors():
             "qc_h":            round(qc_h, 2),
             "qc_total_h":      round(qc_total_h, 2),
             "qc_rate":         round(qc_h / qc_total_h * 100, 1) if qc_total_h > 0 else 0,
-            "collect_qc_h":    round(collect_qc_map.get(p, 0), 2),
+            "collect_qc_h":        round(collect_qc_map.get(p, 0), 2),
+            "collect_inspected_h": round(collect_inspected_map.get(p, 0), 2),
+            "upload_h":            round(upload_h_map.get(p, 0), 2),
             # 待质检 / 待抽检
             "pending_inspect_h":  round(pending_inspect_map.get(p, 0), 1),
             "pending_sampling_h": round(pending_sampling_map.get(p, 0), 1),
@@ -2019,25 +2277,46 @@ def collectors_sparklines():
 @app.route("/api/collectors")
 def collectors():
     date_str = request.args.get("date", str(date.today()))
-    cached = _collectors_file_get(date_str)
-    if cached:
-        return jsonify(cached)
+    refresh = request.args.get("refresh") == "1"
+    if not refresh:
+        cached = _collectors_file_get(date_str)
+        if cached:
+            return jsonify(cached)
     conn = mysql()
+    collect_qc_map = {}
+    collect_inspected_map = {}
+    upload_h_map = {}
+    old_wrist_ids = set()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT hc.producer, hc.produced_by_group AS vendor,
-                       hcn.node_created_at AS t_start, hcn.node_updated_at AS t_end,
-                       IFNULL(hc.video_seconds, 0) AS vsec
+                SELECT
+                    hc.id AS case_id,
+                    'old' AS db_source,
+                    hc.producer,
+                    hc.produced_by_group AS vendor,
+                    MIN(hcn.node_created_at) AS t_start,
+                    MAX(hcn.node_updated_at) AS t_end,
+                    MAX(IFNULL(hc.video_seconds, 0)) AS vsec,
+                    hc.project_id AS project_id
                 FROM human_cases hc
                 JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
                 WHERE hcn.node_name = 'human_case_produce_complete'
                   AND hcn.node_status = 3
                   AND DATE(hcn.node_updated_at) = %s
                   AND hc.deleted_at IS NULL
-                ORDER BY hc.producer, hcn.node_created_at
+                GROUP BY hc.id, hc.producer, hc.produced_by_group, hc.project_id
+                ORDER BY hc.producer, MIN(hcn.node_created_at)
             """, [date_str])
             produce_rows = cur.fetchall()
+
+            # 腕部相机项目 ID 集合（旧库）
+            cur.execute("""
+                SELECT ptp.project_id FROM project_tag_project ptp
+                JOIN project_tag pt ON pt.id = ptp.tag_id
+                WHERE pt.tag_name = '腕部Wrist'
+            """)
+            old_wrist_ids = set(r["project_id"] for r in cur.fetchall())
 
             # 质检通过/总量（新逻辑）
             # - 有 sampling 节点 → 只看 sampling，status=3 才通过
@@ -2084,80 +2363,163 @@ def collectors():
                     "qc_total_h": float(r["qc_total_h"] or 0),
                 }
 
-            # ── 累计数据（1小时缓存，与日期无关）──────────────────
+            # ── 采集人效：今日采集中已质检通过 / 已完成质检时长（含 wrist/pt 拆分）──────────
+            collect_qc_map = {}
+            collect_inspected_map = {}
+            wrist_collect_qc_map = {}
+            wrist_collect_inspected_map = {}
+            pt_collect_qc_map = {}
+            pt_collect_inspected_map = {}
+            if produce_rows:
+                cur.execute("""
+                    SELECT hc.producer, hc.project_id,
+                        SUM(CASE
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_sampling' AND node_status=3) THEN IFNULL(hc.video_seconds,0)
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_sampling') THEN 0
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_inspect' AND node_status=3) THEN IFNULL(hc.video_seconds,0)
+                            ELSE 0
+                        END) / 3600.0 AS collect_qc_h,
+                        SUM(CASE
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_sampling' AND node_status IN (3,4)) THEN IFNULL(hc.video_seconds,0)
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_sampling') THEN 0
+                            WHEN EXISTS (SELECT 1 FROM human_case_nodes WHERE human_case_id=hc.id AND node_name='human_case_inspect' AND node_status IN (3,4)) THEN IFNULL(hc.video_seconds,0)
+                            ELSE 0
+                        END) / 3600.0 AS collect_inspected_h
+                    FROM human_cases hc
+                    JOIN human_case_nodes hcn ON hcn.human_case_id=hc.id
+                    WHERE hcn.node_name='human_case_produce_complete' AND hcn.node_status=3
+                      AND DATE(hcn.node_updated_at)=%s AND hc.deleted_at IS NULL
+                    GROUP BY hc.producer, hc.project_id
+                """, [date_str])
+                for r in cur.fetchall():
+                    p = r["producer"]; pid = r["project_id"] or ""
+                    qc_h   = float(r["collect_qc_h"] or 0)
+                    insp_h = float(r["collect_inspected_h"] or 0)
+                    collect_qc_map[p]        = collect_qc_map.get(p, 0) + qc_h
+                    collect_inspected_map[p] = collect_inspected_map.get(p, 0) + insp_h
+                    if pid in old_wrist_ids:
+                        wrist_collect_qc_map[p]        = wrist_collect_qc_map.get(p, 0) + qc_h
+                        wrist_collect_inspected_map[p] = wrist_collect_inspected_map.get(p, 0) + insp_h
+                    else:
+                        pt_collect_qc_map[p]        = pt_collect_qc_map.get(p, 0) + qc_h
+                        pt_collect_inspected_map[p] = pt_collect_inspected_map.get(p, 0) + insp_h
+
+            # ── 原始人效：human_case_upload 节点当日 video_seconds ──
+            upload_h_map = {}
+            wrist_upload_map = {}
+            pt_upload_map = {}
+            if produce_rows:
+                cur.execute("""
+                    SELECT hc.producer, hc.project_id,
+                        SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS upload_h
+                    FROM human_cases hc
+                    JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                    WHERE hcn.node_name = 'human_case_upload'
+                      AND hcn.node_status = 3
+                      AND DATE(hcn.node_updated_at) = %s
+                      AND hc.deleted_at IS NULL
+                    GROUP BY hc.producer, hc.project_id
+                """, [date_str])
+                for r in cur.fetchall():
+                    p = r["producer"]; h = float(r["upload_h"] or 0)
+                    upload_h_map[p] = upload_h_map.get(p, 0) + h
+                    pid = r["project_id"] or ""
+                    if pid in old_wrist_ids:
+                        wrist_upload_map[p] = wrist_upload_map.get(p, 0) + h
+                    else:
+                        pt_upload_map[p] = pt_upload_map.get(p, 0) + h
+
+            # ── 累计数据（后台异步刷新，不阻塞请求）──────────────────
             _cumul_cache_key = "coll_cumul:all"
             _cumul = _cache_get(_cumul_cache_key)
             if _cumul:
-                total_collect_map, first_collect_map, total_qc_map, pending_qc_map = _cumul
+                total_collect_map, first_collect_map, total_qc_map = _cumul
+                pending_qc_map = _cache_get("coll_pending:all") or {}
             else:
-                # 累计采集时长 + 首次采集日期
-                cur.execute("""
-                    SELECT hc.producer,
-                        SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS total_collect_h,
-                        MIN(DATE(hcn.node_updated_at)) AS first_collect_date
-                    FROM human_cases hc
-                    JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
-                    WHERE hcn.node_name = 'human_case_produce_complete'
-                      AND hcn.node_status = 3
-                      AND hc.deleted_at IS NULL
-                    GROUP BY hc.producer
-                """)
-                _rows = cur.fetchall()
-                total_collect_map = {r["producer"]: float(r["total_collect_h"] or 0) for r in _rows}
-                first_collect_map = {r["producer"]: str(r["first_collect_date"]) if r["first_collect_date"] else "" for r in _rows}
-
-                # 累计质检通过时长 + 通过率
-                cur.execute("""
-                    SELECT hc.producer,
-                        COUNT(*) AS total_qc_total,
-                        SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS total_qc_passed,
-                        SUM(CASE WHEN q.passed = 1 THEN IFNULL(hc.video_seconds, 0) ELSE 0 END) / 3600.0 AS total_qc_h,
-                        SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS total_qc_total_h
-                    FROM human_cases hc
-                    JOIN (
-                        SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                        FROM human_case_nodes hcn
-                        WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
-                        UNION ALL
-                        SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
-                        FROM human_case_nodes hcn
-                        WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
-                          AND NOT EXISTS (
-                              SELECT 1 FROM human_case_nodes s
-                              WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
-                          )
-                    ) q ON q.human_case_id = hc.id
-                    WHERE hc.deleted_at IS NULL
-                    GROUP BY hc.producer
-                """)
-                total_qc_map = {r["producer"]: {
-                    "total_qc_h":       float(r["total_qc_h"] or 0),
-                    "total_qc_passed":  int(r["total_qc_passed"] or 0),
-                    "total_qc_total":   int(r["total_qc_total"] or 0),
-                    "total_qc_total_h": float(r["total_qc_total_h"] or 0),
-                } for r in cur.fetchall()}
-
-                # 待质检时长（全量存量）
-                cur.execute("""
-                    SELECT hc.producer,
-                        SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS pending_qc_h
-                    FROM human_cases hc
-                    JOIN (
-                        SELECT hcn.human_case_id FROM human_case_nodes hcn
-                        WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (1, 2)
-                        UNION ALL
-                        SELECT hcn.human_case_id FROM human_case_nodes hcn
-                        WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (1, 2)
-                          AND NOT EXISTS (
-                              SELECT 1 FROM human_case_nodes s
-                              WHERE s.human_case_id = hcn.human_case_id AND s.node_name = 'human_case_sampling'
-                          )
-                    ) pending ON pending.human_case_id = hc.id
-                    WHERE hc.deleted_at IS NULL
-                    GROUP BY hc.producer
-                """)
-                pending_qc_map = {r["producer"]: float(r["pending_qc_h"] or 0) for r in cur.fetchall()}
-                _cache_set(_cumul_cache_key, (total_collect_map, first_collect_map, total_qc_map, pending_qc_map), 3600)
+                total_collect_map, first_collect_map, total_qc_map, pending_qc_map = {}, {}, {}, {}
+                def _refresh_cumul_all():
+                    try:
+                        _conn = mysql()
+                        with _conn.cursor() as _cur:
+                            _cur.execute("""
+                                SELECT hc.producer,
+                                    SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS total_collect_h,
+                                    MIN(DATE(hcn.node_updated_at)) AS first_collect_date
+                                FROM human_cases hc
+                                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                                WHERE hcn.node_name = 'human_case_produce_complete'
+                                  AND hcn.node_status = 3
+                                  AND hc.deleted_at IS NULL
+                                GROUP BY hc.producer
+                            """)
+                            _rows = _cur.fetchall()
+                            _tc = {r["producer"]: float(r["total_collect_h"] or 0) for r in _rows}
+                            _fc = {r["producer"]: str(r["first_collect_date"]) if r["first_collect_date"] else "" for r in _rows}
+                            _cur.execute("""
+                                SELECT hc.producer,
+                                    COUNT(*) AS total_qc_total,
+                                    SUM(CASE WHEN q.passed = 1 THEN 1 ELSE 0 END) AS total_qc_passed,
+                                    SUM(CASE WHEN q.passed = 1 THEN IFNULL(hc.video_seconds, 0) ELSE 0 END) / 3600.0 AS total_qc_h,
+                                    SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS total_qc_total_h
+                                FROM human_cases hc
+                                JOIN (
+                                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                                    FROM human_case_nodes hcn
+                                    WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (3, 4)
+                                    UNION ALL
+                                    SELECT hcn.human_case_id, CASE WHEN hcn.node_status = 3 THEN 1 ELSE 0 END AS passed
+                                    FROM human_case_nodes hcn
+                                    LEFT JOIN (
+                                        SELECT DISTINCT human_case_id FROM human_case_nodes
+                                        WHERE node_name = 'human_case_sampling'
+                                    ) s ON s.human_case_id = hcn.human_case_id
+                                    WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (3, 4)
+                                      AND s.human_case_id IS NULL
+                                ) q ON q.human_case_id = hc.id
+                                WHERE hc.deleted_at IS NULL
+                                GROUP BY hc.producer
+                            """)
+                            _tq = {r["producer"]: {
+                                "total_qc_h":       float(r["total_qc_h"] or 0),
+                                "total_qc_passed":  int(r["total_qc_passed"] or 0),
+                                "total_qc_total":   int(r["total_qc_total"] or 0),
+                                "total_qc_total_h": float(r["total_qc_total_h"] or 0),
+                            } for r in _cur.fetchall()}
+                        _conn.close()
+                        _cache_set(_cumul_cache_key, (_tc, _fc, _tq), 21600)
+                    except Exception as _e:
+                        app.logger.error(f"cumul_all bg refresh failed: {_e}")
+                import threading as _th
+                _th.Thread(target=_refresh_cumul_all, daemon=True).start()
+                def _refresh_pending_all():
+                    try:
+                        _conn = mysql()
+                        with _conn.cursor() as _cur:
+                            _cur.execute("""
+                                SELECT hc.producer,
+                                    SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS pending_qc_h
+                                FROM human_cases hc
+                                JOIN (
+                                    SELECT hcn.human_case_id FROM human_case_nodes hcn
+                                    WHERE hcn.node_name = 'human_case_sampling' AND hcn.node_status IN (1, 2)
+                                    UNION ALL
+                                    SELECT hcn.human_case_id FROM human_case_nodes hcn
+                                    LEFT JOIN (
+                                        SELECT DISTINCT human_case_id FROM human_case_nodes
+                                        WHERE node_name = 'human_case_sampling'
+                                    ) s ON s.human_case_id = hcn.human_case_id
+                                    WHERE hcn.node_name = 'human_case_inspect' AND hcn.node_status IN (1, 2)
+                                      AND s.human_case_id IS NULL
+                                ) pending ON pending.human_case_id = hc.id
+                                WHERE hc.deleted_at IS NULL
+                                GROUP BY hc.producer
+                            """)
+                            _pm = {r["producer"]: float(r["pending_qc_h"] or 0) for r in _cur.fetchall()}
+                        _conn.close()
+                        _cache_set("coll_pending:all", _pm, 3600)
+                    except Exception as _e:
+                        app.logger.error(f"pending_all bg refresh failed: {_e}")
+                _th.Thread(target=_refresh_pending_all, daemon=True).start()
 
             # 本周质检通过时长（周一到查询日期，限定当日活跃采集员）
             _d = date.fromisoformat(date_str)
@@ -2193,31 +2555,76 @@ def collectors():
         conn.close()
 
     # ── 合并新库数据 ──────────────────────────────────────────
-    new_produce, new_qc_daily, _ = _query_new_db_daily(date_str)
-    produce_rows = list(produce_rows) + list(new_produce)
+    new_produce, new_qc_daily, new_collect_qc, new_collect_inspected, new_upload_h, new_wrist_uuids, new_wrist_upload, new_pt_upload = _query_new_db_daily(date_str)
+    wrist_ids = old_wrist_ids | new_wrist_uuids
+    produce_rows = _dedupe_produce_rows(list(produce_rows) + list(new_produce))
     qc_map = _merge_qc_map(qc_map, new_qc_daily)
+    collect_qc_map        = _merge_float_map(collect_qc_map, new_collect_qc)
+    collect_inspected_map = _merge_float_map(collect_inspected_map, new_collect_inspected)
+    upload_h_map          = _merge_float_map(upload_h_map, new_upload_h)
+    # 合并腕部/PT upload 拆分
+    for p, h in new_wrist_upload.items():
+        wrist_upload_map[p] = wrist_upload_map.get(p, 0) + h
+    for p, h in new_pt_upload.items():
+        pt_upload_map[p] = pt_upload_map.get(p, 0) + h
 
-    n_tc, n_tqm, _n_pi, _n_ps, n_fc = _query_new_db_cumul()
-    total_collect_map = _merge_float_map(total_collect_map, n_tc)
-    total_qc_map      = _merge_qc_map(total_qc_map, n_tqm)
-    first_collect_map = _merge_date_map(first_collect_map, n_fc)
+    # 新库累计数据：从缓存取，后台异步刷新（新库无索引，同步调用会卡死 worker）
+    _new_cumul_key = "new_db_cumul:all"
+    _new_cumul = _cache_get(_new_cumul_key) or _disk_cache_get(_new_cumul_key)
+    if _new_cumul:
+        n_tc, n_tqm, n_fc = _new_cumul
+        total_collect_map = _merge_float_map(total_collect_map, n_tc)
+        total_qc_map      = _merge_qc_map(total_qc_map, n_tqm)
+        first_collect_map = _merge_date_map(first_collect_map, n_fc)
+    else:
+        def _bg_new_cumul():
+            try:
+                n_tc2, n_tqm2, _pi, _ps, n_fc2 = _query_new_db_cumul()
+                _cache_set(_new_cumul_key, (n_tc2, n_tqm2, n_fc2), 21600)
+                _disk_cache_set(_new_cumul_key, (n_tc2, n_tqm2, n_fc2), 21600)
+            except Exception:
+                import traceback; traceback.print_exc()
+        import threading as _th2
+        _th2.Thread(target=_bg_new_cumul, daemon=True).start()
 
-    # 新库本周质检通过时长（合并后的全量活跃采集员）
+    # 新库本周质检通过时长：从缓存取，后台异步刷新
     all_active = list(set(r["producer"] for r in produce_rows))
-    new_week_qc = _query_new_db_week_qc(week_start, date_str, all_active)
-    week_qc_map = _merge_float_map(week_qc_map, new_week_qc)
+    _new_wqc_key = f"new_db_week_qc:{week_start}:{date_str}"
+    _cached_new_wqc = _cache_get(_new_wqc_key)
+    if _cached_new_wqc is not None:
+        week_qc_map = _merge_float_map(week_qc_map, _cached_new_wqc)
+    else:
+        _all_active_snap = list(all_active)
+        def _bg_new_week_qc():
+            try:
+                nwq = _query_new_db_week_qc(week_start, date_str, _all_active_snap)
+                _cache_set(_new_wqc_key, nwq, 1800)
+            except Exception:
+                import traceback; traceback.print_exc()
+        import threading as _th3
+        _th3.Thread(target=_bg_new_week_qc, daemon=True).start()
+
+    produce_rows = _dedupe_produce_rows(produce_rows)
 
     sessions_by_p = defaultdict(list)
     vendor_by_p   = {}
     vsec_by_p     = defaultdict(float)
     cases_by_p    = defaultdict(int)
+    wrist_vsec_by_p = defaultdict(float)
+    pt_vsec_by_p    = defaultdict(float)
 
     for row in produce_rows:
         p = row["producer"]
         vendor_by_p[p] = row.get("vendor") or row.get("producer_group") or "未知"
         sessions_by_p[p].append((row["t_start"], row["t_end"]))
-        vsec_by_p[p] += float(row["vsec"])
+        vsec = float(row["vsec"])
+        vsec_by_p[p] += vsec
         cases_by_p[p] += 1
+        pid = row.get("project_id") or ""
+        if pid in wrist_ids:
+            wrist_vsec_by_p[p] += vsec
+        else:
+            pt_vsec_by_p[p] += vsec
 
     GAP = 30 * 60  # 30 分钟断点阈值
 
@@ -2265,6 +2672,17 @@ def collectors():
             "qc_total":         qc_tot,
             "qc_h":             round(q_h, 2),
             "qc_rate":          round(qc_pass / qc_tot * 100, 1) if qc_tot > 0 else 0,
+            "collect_qc_h":             round(collect_qc_map.get(p, 0), 2),
+            "collect_inspected_h":      round(collect_inspected_map.get(p, 0), 2),
+            "wrist_collect_qc_h":       round(wrist_collect_qc_map.get(p, 0), 2),
+            "wrist_collect_inspected_h":round(wrist_collect_inspected_map.get(p, 0), 2),
+            "pt_collect_qc_h":          round(pt_collect_qc_map.get(p, 0), 2),
+            "pt_collect_inspected_h":   round(pt_collect_inspected_map.get(p, 0), 2),
+            "upload_h":            round(upload_h_map.get(p, 0), 2),
+            "wrist_upload_h":      round(wrist_upload_map.get(p, 0), 2),
+            "pt_upload_h":         round(pt_upload_map.get(p, 0), 2),
+            "wrist_h":             round(wrist_vsec_by_p[p] / 3600, 2),
+            "pt_h":                round(pt_vsec_by_p[p] / 3600, 2),
             # 本周
             "week_qc_h":        round(week_qc_map.get(p, 0), 1),
             # 待质检
@@ -2298,6 +2716,10 @@ def collectors():
             "total_collect_h":   round(tc, 2),
             "total_qc_h":        round(tq, 2),
             "qc_rate":           round(tqpass / tqtotal * 100, 1) if tqtotal > 0 else 0,
+            "total_wrist_h":     round(sum(x["wrist_h"] for x in vp), 2),
+            "total_pt_h":        round(sum(x["pt_h"] for x in vp), 2),
+            "avg_wrist_h":       round(sum(x["wrist_h"] for x in vp) / n, 2) if n > 0 else 0,
+            "avg_pt_h":          round(sum(x["pt_h"] for x in vp) / n, 2) if n > 0 else 0,
             "persons":           sorted(vp, key=lambda x: -x["collect_h"]),
         })
     vendors.sort(key=lambda x: -x["total_collect_h"])
@@ -2332,9 +2754,10 @@ def collectors_wrist_camera():
         return jsonify({"error": "unauthorized"}), 401
 
     date_str = request.args.get("date", str(date.today()))
+    refresh = request.args.get("refresh") == "1"
     cache_key = f"wrist_cam:{date_str}"
     cached = _cache_get(cache_key)
-    if cached:
+    if cached and not refresh:
         return jsonify(cached)
 
     rows = []
@@ -2389,43 +2812,54 @@ def collectors_wrist_camera():
     try:
         with conn_new.cursor() as cur:
             cur.execute("""
-                SELECT p.uuid FROM project p
-                JOIN project_tag_project ptp ON ptp.project_id = p.id AND ptp.deleted_at IS NULL
+                SELECT p.uuid FROM project_tag_project ptp
                 JOIN project_tag pt ON pt.id = ptp.tag_id
-                WHERE pt.tag_name = '腕部Wrist'
+                JOIN project p ON p.id = ptp.project_id
+                WHERE pt.tag_name = '腕部Wrist' AND ptp.deleted_at IS NULL
             """)
             new_uuids = [r["uuid"] for r in cur.fetchall()]
             if new_uuids:
                 fmt_new = ",".join(["%s"] * len(new_uuids))
                 cur.execute(f"""
                     SELECT
-                        JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                        JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS producer_group,
+                        hc.producer AS producer,
+                        ag.name AS producer_group,
                         COUNT(*) AS collect_cases,
-                        SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS collect_h,
+                        SUM(IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)) / 3600.0 AS collect_h,
                         SUM(CASE
-                            WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status=3) THEN 1
-                            WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling') THEN 0
-                            WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect'  AND n.node_status=3) THEN 1
+                            WHEN COALESCE(ns.sampling_status3,0)=1 THEN 1
+                            WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                            WHEN COALESCE(ns.inspect_status3,0)=1 THEN 1
                             ELSE 0 END) AS qc_passed,
-                        SUM(CASE WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status IN(1,2)) THEN 1 ELSE 0 END) AS pending_sampling,
-                        SUM(CASE WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect' AND n.node_status IN(1,2)) THEN 1 ELSE 0 END) AS pending_inspect,
+                        SUM(CASE WHEN COALESCE(ns.sampling_pending,0)=1 THEN 1 ELSE 0 END) AS pending_sampling,
+                        SUM(CASE WHEN COALESCE(ns.inspect_pending,0)=1 THEN 1 ELSE 0 END) AS pending_inspect,
                         SUM(CASE
-                            WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status=3)
-                                THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                            WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect'  AND n.node_status=3
-                                        AND NOT EXISTS(SELECT 1 FROM human_case_node n2 WHERE n2.human_case_id=hc.id AND n2.node_name='human_case_sampling'))
-                                THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
+                            WHEN COALESCE(ns.sampling_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                            WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                            WHEN COALESCE(ns.inspect_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
                             ELSE 0 END) / 3600.0 AS qc_h
                     FROM human_case hc
                     JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                    JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
+                    LEFT JOIN human_case_tag pt2 ON pt2.human_case_id = hc.id AND pt2.type = 'produce_tags'
+                    LEFT JOIN auth.users au ON au.name = hc.producer
+                    LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                    LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
+                    LEFT JOIN (
+                        SELECT hcn2.human_case_id,
+                            MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS sampling_status3,
+                            MAX(CASE WHEN hcn2.node_name='human_case_sampling' THEN 1 ELSE 0 END) AS sampling_any,
+                            MAX(CASE WHEN hcn2.node_name='human_case_inspect' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS inspect_status3,
+                            MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status IN(1,2) THEN 1 ELSE 0 END) AS sampling_pending,
+                            MAX(CASE WHEN hcn2.node_name='human_case_inspect' AND hcn2.node_status IN(1,2) THEN 1 ELSE 0 END) AS inspect_pending
+                        FROM human_case_node hcn2
+                        WHERE hcn2.node_name IN ('human_case_sampling','human_case_inspect')
+                        GROUP BY hcn2.human_case_id
+                    ) ns ON ns.human_case_id = hc.id
                     WHERE hcn.node_name = 'human_case_produce_complete'
                       AND hcn.node_status = 3
                       AND DATE(hcn.node_updated_at) = %s
                       AND hc.project_uuid IN ({fmt_new})
-                      AND hc.deleted_at IS NULL
-                    GROUP BY producer, producer_group
+                    GROUP BY hc.producer, ag.name
                 """, [date_str] + new_uuids)
                 rows += cur.fetchall()
     finally:
@@ -2486,30 +2920,35 @@ def collectors_wrist_camera_range():
     conn_new = mysql_new()
     try:
         with conn_new.cursor() as cur:
-            cur.execute("""SELECT p.uuid FROM project p
-                JOIN project_tag_project ptp ON ptp.project_id=p.id AND ptp.deleted_at IS NULL
+            cur.execute("""SELECT ptp.project_id FROM project_tag_project ptp
                 JOIN project_tag pt ON pt.id=ptp.tag_id
-                WHERE pt.tag_name='腕部Wrist'""")
-            new_uuids = [r["uuid"] for r in cur.fetchall()]
+                WHERE pt.tag_name='腕部Wrist' AND ptp.deleted_at IS NULL""")
+            new_uuids = [r["project_id"] for r in cur.fetchall()]
             if new_uuids:
                 fmt = ",".join(["%s"] * len(new_uuids))
                 cur.execute(f"""
-                    SELECT JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.producer.producer_name')) AS producer,
-                           JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.producer.producer_group')) AS vendor,
+                    SELECT hc.producer AS producer,
+                           hc.produced_by_group AS vendor,
                            DATE(hcn.node_updated_at) AS collect_date,
                            SUM(CASE
-                               WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status=3)
-                                   THEN IFNULL(CAST(JSON_EXTRACT(t.value,'$.data_info.duration') AS DECIMAL(10,2)),0)
-                               WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling') THEN 0
-                               WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect' AND n.node_status=3)
-                                   THEN IFNULL(CAST(JSON_EXTRACT(t.value,'$.data_info.duration') AS DECIMAL(10,2)),0)
+                               WHEN COALESCE(ns.sampling_status3,0)=1 THEN IFNULL(hc.video_seconds,0)
+                               WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                               WHEN COALESCE(ns.inspect_status3,0)=1 THEN IFNULL(hc.video_seconds,0)
                                ELSE 0 END) / 3600.0 AS qc_h
-                    FROM human_case hc
-                    JOIN human_case_node hcn ON hcn.human_case_id=hc.id
-                    JOIN human_case_tag t ON t.human_case_id=hc.id AND t.type='produce_tags'
+                    FROM human_cases hc
+                    JOIN human_case_nodes hcn ON hcn.human_case_id=hc.id
+                    LEFT JOIN (
+                        SELECT hcn2.human_case_id,
+                            MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS sampling_status3,
+                            MAX(CASE WHEN hcn2.node_name='human_case_sampling' THEN 1 ELSE 0 END) AS sampling_any,
+                            MAX(CASE WHEN hcn2.node_name='human_case_inspect' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS inspect_status3
+                        FROM human_case_nodes hcn2
+                        WHERE hcn2.node_name IN ('human_case_sampling','human_case_inspect')
+                        GROUP BY hcn2.human_case_id
+                    ) ns ON ns.human_case_id = hc.id
                     WHERE hcn.node_name='human_case_produce_complete' AND hcn.node_status=3
                       AND DATE(hcn.node_updated_at) BETWEEN %s AND %s
-                      AND hc.project_uuid IN ({fmt}) AND hc.deleted_at IS NULL
+                      AND hc.project_id IN ({fmt}) AND hc.deleted_at IS NULL
                     GROUP BY producer, vendor, collect_date
                 """, [start_str, end_str] + new_uuids)
                 for r in cur.fetchall():
@@ -2599,9 +3038,10 @@ def collectors_pt_camera():
         return jsonify({"error": "unauthorized"}), 401
 
     date_str  = request.args.get("date", str(date.today()))
+    refresh   = request.args.get("refresh") == "1"
     cache_key = f"pt_cam:{date_str}"
     cached    = _cache_get(cache_key)
-    if cached:
+    if cached and not refresh:
         return jsonify(cached)
 
     rows = []
@@ -2657,42 +3097,53 @@ def collectors_pt_camera():
     try:
         with conn_new.cursor() as cur:
             cur.execute("""
-                SELECT p.uuid FROM project p
-                JOIN project_tag_project ptp ON ptp.project_id = p.id AND ptp.deleted_at IS NULL
+                SELECT p.uuid FROM project_tag_project ptp
                 JOIN project_tag pt ON pt.id = ptp.tag_id
-                WHERE pt.tag_name = '腕部Wrist'
+                JOIN project p ON p.id = ptp.project_id
+                WHERE pt.tag_name = '腕部Wrist' AND ptp.deleted_at IS NULL
             """)
             wrist_new_uuids = [r["uuid"] for r in cur.fetchall()]
             excl_new = f"AND hc.project_uuid NOT IN ({','.join(['%s']*len(wrist_new_uuids))})" if wrist_new_uuids else ""
             cur.execute(f"""
                 SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_name')) AS producer,
-                    JSON_UNQUOTE(JSON_EXTRACT(t.value, '$.producer.producer_group')) AS producer_group,
+                    hc.producer AS producer,
+                    ag.name AS producer_group,
                     COUNT(*) AS collect_cases,
-                    SUM(IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)) / 3600.0 AS collect_h,
+                    SUM(IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)) / 3600.0 AS collect_h,
                     SUM(CASE
-                        WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status=3) THEN 1
-                        WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling') THEN 0
-                        WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect'  AND n.node_status=3) THEN 1
+                        WHEN COALESCE(ns.sampling_status3,0)=1 THEN 1
+                        WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                        WHEN COALESCE(ns.inspect_status3,0)=1 THEN 1
                         ELSE 0 END) AS qc_passed,
-                    SUM(CASE WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status IN(1,2)) THEN 1 ELSE 0 END) AS pending_sampling,
-                    SUM(CASE WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect' AND n.node_status IN(1,2)) THEN 1 ELSE 0 END) AS pending_inspect,
+                    SUM(CASE WHEN COALESCE(ns.sampling_pending,0)=1 THEN 1 ELSE 0 END) AS pending_sampling,
+                    SUM(CASE WHEN COALESCE(ns.inspect_pending,0)=1 THEN 1 ELSE 0 END) AS pending_inspect,
                     SUM(CASE
-                        WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_sampling' AND n.node_status=3)
-                            THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
-                        WHEN EXISTS(SELECT 1 FROM human_case_node n WHERE n.human_case_id=hc.id AND n.node_name='human_case_inspect' AND n.node_status=3
-                                    AND NOT EXISTS(SELECT 1 FROM human_case_node n2 WHERE n2.human_case_id=hc.id AND n2.node_name='human_case_sampling'))
-                            THEN IFNULL(CAST(JSON_EXTRACT(t.value, '$.data_info.duration') AS DECIMAL(10,2)), 0)
+                        WHEN COALESCE(ns.sampling_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                        WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                        WHEN COALESCE(ns.inspect_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt2.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
                         ELSE 0 END) / 3600.0 AS qc_h
                 FROM human_case hc
                 JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
+                LEFT JOIN human_case_tag pt2 ON pt2.human_case_id = hc.id AND pt2.type = 'produce_tags'
+                LEFT JOIN auth.users au ON au.name = hc.producer
+                LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
+                LEFT JOIN (
+                    SELECT hcn2.human_case_id,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS sampling_status3,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling' THEN 1 ELSE 0 END) AS sampling_any,
+                        MAX(CASE WHEN hcn2.node_name='human_case_inspect' AND hcn2.node_status=3 THEN 1 ELSE 0 END) AS inspect_status3,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status IN(1,2) THEN 1 ELSE 0 END) AS sampling_pending,
+                        MAX(CASE WHEN hcn2.node_name='human_case_inspect' AND hcn2.node_status IN(1,2) THEN 1 ELSE 0 END) AS inspect_pending
+                    FROM human_case_node hcn2
+                    WHERE hcn2.node_name IN ('human_case_sampling','human_case_inspect')
+                    GROUP BY hcn2.human_case_id
+                ) ns ON ns.human_case_id = hc.id
                 WHERE hcn.node_name = 'human_case_produce_complete'
                   AND hcn.node_status = 3
                   AND DATE(hcn.node_updated_at) = %s
-                  AND hc.deleted_at IS NULL
                   {excl_new}
-                GROUP BY producer, producer_group
+                GROUP BY hc.producer, ag.name
             """, [date_str] + wrist_new_uuids)
             rows += cur.fetchall()
     finally:
@@ -2789,9 +3240,10 @@ def vendor_watch_toggle():
 @app.route("/api/collectors/by-project")
 def collectors_by_project():
     date_str = request.args.get("date", str(date.today()))
+    refresh = request.args.get("refresh") == "1"
     cache_key = f"coll_by_proj:{date_str}"
     cached = _cache_get(cache_key)
-    if cached:
+    if cached and not refresh:
         return jsonify(cached)
 
     conn = mysql()
@@ -2858,20 +3310,17 @@ def collectors_by_project():
     try:
         with conn_new.cursor() as cur2:
             cur2.execute("""
-                SELECT hc.project_uuid AS pid,
-                       p.name AS project_name,
+                SELECT hc.project_id AS pid,
                        COUNT(DISTINCT hc.id) AS collect_cases,
-                       SUM(IFNULL(CAST(JSON_EXTRACT(t.value,'$.data_info.duration') AS DECIMAL(10,2)),0)) / 3600.0 AS collect_h,
-                       COUNT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.producer.producer_name'))) AS collector_count
-                FROM human_case hc
-                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
-                JOIN human_case_tag t ON t.human_case_id = hc.id AND t.type = 'produce_tags'
-                LEFT JOIN project p ON p.uuid = hc.project_uuid AND p.deleted_at IS NULL
+                       SUM(IFNULL(hc.video_seconds, 0)) / 3600.0 AS collect_h,
+                       COUNT(DISTINCT hc.producer) AS collector_count
+                FROM human_cases hc
+                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
                 WHERE hcn.node_name = 'human_case_produce_complete'
                   AND hcn.node_status = 3
                   AND DATE(hcn.node_updated_at) = %s
                   AND hc.deleted_at IS NULL
-                GROUP BY hc.project_uuid, p.name
+                GROUP BY hc.project_id
             """, [date_str])
             new_collect_rows = {r["pid"]: r for r in cur2.fetchall()}
 
@@ -2880,28 +3329,36 @@ def collectors_by_project():
                 new_pids = list(new_collect_rows.keys())
                 nph = ",".join(["%s"] * len(new_pids))
                 cur2.execute(f"""
-                    SELECT hc.project_uuid AS pid,
+                    SELECT hc.project_id AS pid,
                            COUNT(*) AS qc_total,
                            SUM(CASE WHEN q.passed=1 THEN 1 ELSE 0 END) AS qc_passed,
-                           SUM(CASE WHEN q.passed=1 THEN IFNULL(CAST(JSON_EXTRACT(t.value,'$.data_info.duration') AS DECIMAL(10,2)),0) ELSE 0 END)/3600.0 AS qc_h
-                    FROM human_case hc
-                    JOIN human_case_tag t ON t.human_case_id=hc.id AND t.type='produce_tags'
+                           SUM(CASE WHEN q.passed=1 THEN IFNULL(hc.video_seconds,0) ELSE 0 END)/3600.0 AS qc_h
+                    FROM human_cases hc
                     JOIN (
                         SELECT hcn.human_case_id, CASE WHEN hcn.node_status=3 THEN 1 ELSE 0 END AS passed
-                        FROM human_case_node hcn
+                        FROM human_case_nodes hcn
                         WHERE hcn.node_name='human_case_sampling' AND hcn.node_status IN(3,4)
                           AND DATE(hcn.node_updated_at)=%s
                         UNION ALL
                         SELECT hcn.human_case_id, CASE WHEN hcn.node_status=3 THEN 1 ELSE 0 END AS passed
-                        FROM human_case_node hcn
+                        FROM human_case_nodes hcn
                         WHERE hcn.node_name='human_case_inspect' AND hcn.node_status IN(3,4)
                           AND DATE(hcn.node_updated_at)=%s
-                          AND NOT EXISTS(SELECT 1 FROM human_case_node s WHERE s.human_case_id=hcn.human_case_id AND s.node_name='human_case_sampling')
+                          AND NOT EXISTS(SELECT 1 FROM human_case_nodes s WHERE s.human_case_id=hcn.human_case_id AND s.node_name='human_case_sampling')
                     ) q ON q.human_case_id=hc.id
-                    WHERE hc.deleted_at IS NULL AND hc.project_uuid IN ({nph})
-                    GROUP BY hc.project_uuid
+                    WHERE hc.deleted_at IS NULL AND hc.project_id IN ({nph})
+                    GROUP BY hc.project_id
                 """, [date_str, date_str] + new_pids)
                 new_qc_rows = {r["pid"]: r for r in cur2.fetchall()}
+
+            # 新库项目名称
+            if new_collect_rows:
+                new_pids2 = list(new_collect_rows.keys())
+                nph2 = ",".join(["%s"] * len(new_pids2))
+                cur2.execute(f"SELECT id, name FROM projects WHERE id IN ({nph2}) AND deleted_at IS NULL", new_pids2)
+                for r in cur2.fetchall():
+                    if r["id"] in new_collect_rows:
+                        new_collect_rows[r["id"]]["project_name"] = r["name"]
     finally:
         conn_new.close()
 
@@ -3721,17 +4178,29 @@ def _delivery_cache_path(name):
     return os.path.join(DELIVERY_CACHE_DIR, f"{safe}.json")
 
 
-def _delivery_file_get(name):
+def _delivery_file_get(name, ttl=None):
     """从文件缓存读取，超 TTL 返回 (None, None)"""
     path = _delivery_cache_path(name)
+    effective_ttl = ttl if ttl is not None else DELIVERY_CACHE_TTL
     try:
         with open(path, encoding="utf-8") as f:
             obj = json.load(f)
-        if time.time() - obj.get("ts", 0) > DELIVERY_CACHE_TTL:
+        if time.time() - obj.get("ts", 0) > effective_ttl:
             return None, None
         return obj.get("data"), obj.get("updated_at")
     except Exception:
         return None, None
+
+
+def _delivery_file_is_fresh(name, ttl):
+    """检查缓存是否在 ttl 秒内仍有效"""
+    path = _delivery_cache_path(name)
+    try:
+        with open(path, encoding="utf-8") as f:
+            obj = json.load(f)
+        return time.time() - obj.get("ts", 0) <= ttl
+    except Exception:
+        return False
 
 
 def _delivery_file_set(name, data):
@@ -3805,20 +4274,25 @@ def _run_single_delivery(proj_name):
     """运行 query.py --project <name> --json --no-save，返回解析后的 dict"""
     result = subprocess.run(
         ["python3", DELIVERY_SCRIPT, "--project", proj_name, "--json", "--no-save"],
-        capture_output=True, text=True, timeout=600, close_fds=True,
+        capture_output=True, text=True, timeout=7200, close_fds=True,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr[:500])
     return json.loads(result.stdout)
 
 
-def _delivery_refresh_all():
-    """后台刷新所有 active 项目，写入文件缓存"""
+def _delivery_refresh_all(force=False):
+    """后台刷新所有 active 项目，写入文件缓存。
+    force=False 时跳过缓存仍有效的项目（按各项目 refresh_interval）。"""
     try:
-        open(DELIVERY_LOCK_FILE, "w").close()   # 创建锁文件
+        open(DELIVERY_LOCK_FILE, "w").close()
         projects = _load_delivery_projects()
         for proj in projects:
             name = proj["name"]
+            ttl = int(proj.get("refresh_interval", DELIVERY_CACHE_TTL))
+            if not force and _delivery_file_is_fresh(name, ttl):
+                print(f"[delivery] {name} 缓存有效，跳过", flush=True)
+                continue
             try:
                 data = _run_single_delivery(name)
                 _delivery_file_set(name, data)
@@ -3833,11 +4307,11 @@ def _delivery_refresh_all():
 
 
 def _delivery_refresh_loop():
-    """守护线程：启动延迟 60 秒后开始，每 2 小时刷新一次"""
+    """守护线程：启动延迟 60 秒后开始，每小时检查一次，按各项目 refresh_interval 决定是否刷新"""
     time.sleep(60)
     while True:
-        _delivery_refresh_all()
-        time.sleep(DELIVERY_CACHE_TTL)
+        _delivery_refresh_all(force=False)
+        time.sleep(3600)
 
 
 @app.route("/api/delivery/projects")
@@ -3856,7 +4330,8 @@ def api_delivery_data():
     result = {}
     for proj in projects:
         name = proj["name"]
-        cached, updated_at = _delivery_file_get(name)
+        ttl = int(proj.get("refresh_interval", DELIVERY_CACHE_TTL))
+        cached, updated_at = _delivery_file_get(name, ttl=ttl)
         result[name] = {
             "config": proj,
             "data": cached,
@@ -3879,7 +4354,7 @@ def api_delivery_refresh():
         return jsonify({"error": "未登录"}), 401
     if _delivery_is_refreshing():
         return jsonify({"status": "already_running"})
-    t = threading.Thread(target=_delivery_refresh_all, daemon=True)
+    t = threading.Thread(target=_delivery_refresh_all, args=(True,), daemon=True)
     t.start()
     return jsonify({"status": "started"})
 
@@ -3906,6 +4381,471 @@ def _trend_bg_loop():
 
 threading.Thread(target=_trend_bg_loop, daemon=True).start()
 
+
+# ═══════════════════════════════════════════════════════════════
+#  DM 看板
+# ═══════════════════════════════════════════════════════════════
+
+_DM_ENV_ORDER = ["家居", "商超", "酒店", "物流"]
+_DM_ENV_ALIASES = {
+    "home": "家居",
+    "supermarket": "商超", "retail": "商超",
+    "hospitality": "酒店", "hotel": "酒店", "hospital": "酒店",
+    "logistics": "物流", "distribution_center": "物流",
+}
+
+def _dm_parse_env(env_type_name, environment_num, env_num):
+    for raw in (env_type_name, environment_num, env_num):
+        v = str(raw or "").strip().strip("\"'")
+        if not v or v in ("None", "null", "nan"):
+            continue
+        key = v
+        m = re.match(r"^([a-z_]+?)_x_", v) or re.match(r"^([a-z_]+?)_\d", v)
+        if m:
+            key = m.group(1)
+        mapped = _DM_ENV_ALIASES.get(key)
+        if mapped:
+            return mapped
+        # 直接是中文环境名
+        if key in _DM_ENV_ORDER:
+            return key
+    return ""
+
+def _dm_env_sort(name):
+    if name in _DM_ENV_ORDER:
+        return (0, _DM_ENV_ORDER.index(name))
+    return (1, name)
+
+def _dm_build_summary(rows):
+    grouped = defaultdict(lambda: {"projects": set(), "scenes": set(), "tasks": set()})
+    for r in rows:
+        env = _dm_parse_env(r.get("env_type_name"), r.get("environment_num"), r.get("env_num"))
+        if not env:
+            continue
+        task = (r.get("task_name") or "").strip()
+        if not task:
+            continue
+        grouped[env]["projects"].add(r.get("project_name") or "")
+        if r.get("scene_num"):
+            grouped[env]["scenes"].add(r["scene_num"])
+        grouped[env]["tasks"].add(task)
+    result = []
+    for env in sorted(grouped.keys(), key=_dm_env_sort):
+        g = grouped[env]
+        result.append({
+            "env": env,
+            "count": len(g["tasks"]),
+            "projects": sorted(g["projects"]),
+            "scenes": sorted(g["scenes"]),
+            "tasks": sorted(g["tasks"]),
+        })
+    return result
+
+@app.route("/dm")
+def dm_page():
+    return send_from_directory(".", "dm.html")
+
+@app.route("/api/dm/summary")
+def dm_summary():
+    cached = _cache_get("dm_summary")
+    if cached:
+        return jsonify(cached)
+
+    rows = []
+
+    # 旧库
+    try:
+        conn = mysql()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT p.name AS project_name,
+                       hc.task_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.env_type_name'))   AS env_type_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.environment_num')) AS environment_num,
+                       JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.env_num'))         AS env_num,
+                       JSON_UNQUOTE(JSON_EXTRACT(hc.metadata, '$.scene_num'))       AS scene_num
+                FROM human_cases hc
+                JOIN projects p ON p.id = hc.project_id
+                WHERE hc.project_id IN (
+                    SELECT DISTINCT p2.id FROM project_tag_project ptp
+                    JOIN project_tag t ON t.id = ptp.tag_id
+                    JOIN projects p2 ON p2.id = ptp.project_id
+                    WHERE ptp.deleted_at IS NULL AND p2.is_deleted = 0
+                      AND LOWER(t.tag_name) = 'dm'
+                )
+                AND hc.id IN (
+                    SELECT hcn.human_case_id FROM human_case_nodes hcn
+                    INNER JOIN (
+                        SELECT human_case_id, MAX(id) AS max_id
+                        FROM human_case_nodes
+                        WHERE node_name = 'complete_job' GROUP BY human_case_id
+                    ) latest ON latest.max_id = hcn.id
+                    WHERE hcn.node_status = 3
+                )
+            """)
+            rows += list(cur.fetchall())
+        conn.close()
+    except Exception as e:
+        app.logger.warning(f"DM old db error: {e}")
+
+    # 新库
+    try:
+        conn2 = mysql_new()
+        with conn2.cursor() as cur:
+            cur.execute("""
+                SELECT p.name AS project_name,
+                       COALESCE(
+                           NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.task_name')), ''),
+                           NULLIF(slog.task_name, ''),
+                           CONCAT('task_id:', CAST(hc.task_id AS CHAR))
+                       ) AS task_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.env_type_name'))   AS env_type_name,
+                       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.environment_num')),
+                                JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.env_num')), '') AS environment_num,
+                       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.env_num')),
+                                JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.environment_num')), '') AS env_num,
+                       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(ctx.value, '$.scene_num')), '') AS scene_num
+                FROM human_case hc
+                JOIN project p ON p.uuid = hc.project_uuid
+                LEFT JOIN (
+                    SELECT t1.human_case_id, t1.value FROM human_case_tag t1
+                    INNER JOIN (SELECT human_case_id, MAX(id) AS max_id FROM human_case_tag
+                                WHERE type='context_tags' GROUP BY human_case_id) tc ON tc.max_id = t1.id
+                ) ctx ON ctx.human_case_id = hc.id
+                LEFT JOIN (
+                    SELECT l1.human_case_uuid, l1.task_name FROM human_case_sample_log l1
+                    INNER JOIN (SELECT human_case_uuid, MAX(id) AS max_id FROM human_case_sample_log
+                                GROUP BY human_case_uuid) ls ON ls.max_id = l1.id
+                ) slog ON slog.human_case_uuid = hc.uuid
+                WHERE p.deleted_at IS NULL AND hc.deleted_at IS NULL
+                  AND p.id IN (
+                      SELECT DISTINCT p2.id FROM project p2
+                      JOIN project_tag_project ptp ON ptp.project_id = p2.id AND ptp.deleted_at IS NULL
+                      JOIN project_tag t ON t.id = ptp.tag_id
+                      WHERE p2.deleted_at IS NULL AND LOWER(t.tag_name) = 'dm'
+                  )
+                  AND hc.id IN (
+                      SELECT x.human_case_id FROM (
+                          SELECT human_case_id, node_name, node_status,
+                                 ROW_NUMBER() OVER (PARTITION BY human_case_id, node_name ORDER BY id DESC) AS rn
+                          FROM human_case_node
+                          WHERE node_name IN ('complete_job', 'delivery_packaging')
+                      ) x WHERE x.rn = 1 AND x.node_status = 3
+                  )
+            """)
+            rows += list(cur.fetchall())
+        conn2.close()
+    except Exception as e:
+        app.logger.warning(f"DM new db error: {e}")
+
+    summary = _dm_build_summary(rows)
+    total = sum(g["count"] for g in summary)
+    result = {"summary": summary, "total": total, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    _cache_set("dm_summary", result, 1800)  # 30 分钟缓存
+    return jsonify(result)
+
+
+# ─── 人效统计 ─────────────────────────────────────────────────────────────────
+_EFFICIENCY_CACHE_PATH = os.path.join(os.path.dirname(__file__), "efficiency_cache.json")
+
+def _load_efficiency_cache():
+    if os.path.exists(_EFFICIENCY_CACHE_PATH):
+        try:
+            with open(_EFFICIENCY_CACHE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _save_efficiency_cache(data):
+    with open(_EFFICIENCY_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _compute_efficiency(date_str):
+    """计算指定日期各供应商腕部/PT 人效，返回 dict"""
+    # ── 1. 获取腕部项目 ID 集合（旧库 + 新库）──────────────────
+    old_wrist_ids = set()
+    new_wrist_ids = set()
+    try:
+        conn = mysql()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT ptp.project_id FROM project_tag_project ptp
+                JOIN project_tag pt ON pt.id = ptp.tag_id
+                WHERE pt.tag_name = '腕部Wrist' AND ptp.deleted_at IS NULL
+            """)
+            old_wrist_ids = set(r["project_id"] for r in cur.fetchall())
+        conn.close()
+    except Exception:
+        pass
+    try:
+        conn2 = mysql_new()
+        with conn2.cursor() as cur:
+            cur.execute("""
+                SELECT p.uuid FROM project_tag_project ptp
+                JOIN project_tag pt ON pt.id = ptp.tag_id
+                JOIN project p ON p.id = ptp.project_id
+                WHERE pt.tag_name = '腕部Wrist' AND ptp.deleted_at IS NULL
+            """)
+            new_wrist_ids = set(r["uuid"] for r in cur.fetchall())
+        conn2.close()
+    except Exception:
+        pass
+    wrist_ids = old_wrist_ids | new_wrist_ids
+    _new_wrist_uuids_cache = new_wrist_ids  # 供后续新库 case 分类使用
+
+    # ── 2. 查询旧库当日采集（含 project_id）──────────────────────
+    # 每个采集员按 is_wrist 分组：upload_h, collect_qc_h, collect_inspected_h
+    person_data = defaultdict(lambda: {
+        "vendor": "未知",
+        "total_collect_h": 0.0,   # 累计采集（判断老人用）
+        "wrist_upload_h": 0.0, "wrist_collect_qc_h": 0.0, "wrist_collect_inspected_h": 0.0,
+        "pt_upload_h": 0.0,    "pt_collect_qc_h": 0.0,    "pt_collect_inspected_h": 0.0,
+    })
+
+    # 旧库
+    try:
+        conn = mysql()
+        with conn.cursor() as cur:
+            # 当日 upload 完成，带 project_id
+            cur.execute("""
+                SELECT hc.producer,
+                       hc.produced_by_group AS vendor,
+                       hc.project_id,
+                       IFNULL(hc.video_seconds, 0) / 3600.0 AS vsec_h
+                FROM human_cases hc
+                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                WHERE hcn.node_name = 'human_case_upload'
+                  AND hcn.node_status = 3
+                  AND DATE(hcn.node_updated_at) = %s
+                  AND hc.deleted_at IS NULL
+            """, [date_str])
+            for r in cur.fetchall():
+                p = r["producer"]; pid = r["project_id"] or ""
+                person_data[p]["vendor"] = r["vendor"] or "未知"
+                if pid in wrist_ids:
+                    person_data[p]["wrist_upload_h"] += float(r["vsec_h"])
+                else:
+                    person_data[p]["pt_upload_h"] += float(r["vsec_h"])
+
+            # 累计采集（判断老人）—— 复用 collectors 缓存，避免全表扫描
+            _cumul = None
+            for _try_key in [f"cumulative:{date_str}", "cumulative:"]:
+                _cumul = _cache_get(_try_key) or _disk_cache_get(_try_key)
+                if _cumul: break
+            if _cumul and isinstance(_cumul, (list, tuple)) and len(_cumul) >= 1:
+                _tc_map = _cumul[0]
+                for _p, _h in _tc_map.items():
+                    person_data[_p]["total_collect_h"] = max(person_data[_p]["total_collect_h"], float(_h))
+            # 若缓存没有，所有人都当老人处理（分母不变，数据仍有意义）
+
+            # 采集抽检人效（旧库：video_seconds，按 project_id 分腕部/PT）
+            cur.execute("""
+                SELECT hc.producer, hc.project_id,
+                    SUM(CASE
+                        WHEN COALESCE(ns.sampling_status3,0)=1 THEN IFNULL(hc.video_seconds,0)
+                        WHEN COALESCE(ns.sampling_any,0)=1     THEN 0
+                        WHEN COALESCE(ns.inspect_status3,0)=1  THEN IFNULL(hc.video_seconds,0)
+                        ELSE 0 END) / 3600.0 AS qc_h,
+                    SUM(CASE
+                        WHEN COALESCE(ns.sampling_status34,0)=1 THEN IFNULL(hc.video_seconds,0)
+                        WHEN COALESCE(ns.sampling_any,0)=1      THEN 0
+                        WHEN COALESCE(ns.inspect_status34,0)=1  THEN IFNULL(hc.video_seconds,0)
+                        ELSE 0 END) / 3600.0 AS inspected_h
+                FROM human_cases hc
+                JOIN human_case_nodes hcn ON hcn.human_case_id = hc.id
+                LEFT JOIN (
+                    SELECT hcn2.human_case_id,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status=3    THEN 1 ELSE 0 END) AS sampling_status3,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling'                           THEN 1 ELSE 0 END) AS sampling_any,
+                        MAX(CASE WHEN hcn2.node_name='human_case_inspect'  AND hcn2.node_status=3   THEN 1 ELSE 0 END) AS inspect_status3,
+                        MAX(CASE WHEN hcn2.node_name='human_case_sampling' AND hcn2.node_status IN(3,4) THEN 1 ELSE 0 END) AS sampling_status34,
+                        MAX(CASE WHEN hcn2.node_name='human_case_inspect'  AND hcn2.node_status IN(3,4) THEN 1 ELSE 0 END) AS inspect_status34
+                    FROM human_case_nodes hcn2
+                    WHERE hcn2.node_name IN ('human_case_sampling','human_case_inspect')
+                    GROUP BY hcn2.human_case_id
+                ) ns ON ns.human_case_id = hc.id
+                WHERE hcn.node_name = 'human_case_upload'
+                  AND hcn.node_status = 3
+                  AND DATE(hcn.node_updated_at) = %s
+                  AND hc.deleted_at IS NULL
+                GROUP BY hc.producer, hc.project_id
+            """, [date_str])
+            for r in cur.fetchall():
+                p = r["producer"]; pid = r["project_id"] or ""
+                if pid in wrist_ids:
+                    person_data[p]["wrist_collect_qc_h"]         += float(r["qc_h"] or 0)
+                    person_data[p]["wrist_collect_inspected_h"]  += float(r["inspected_h"] or 0)
+                else:
+                    person_data[p]["pt_collect_qc_h"]            += float(r["qc_h"] or 0)
+                    person_data[p]["pt_collect_inspected_h"]      += float(r["inspected_h"] or 0)
+        conn.close()
+    except Exception:
+        import traceback; traceback.print_exc()
+
+    # 新库
+    _d_start = date_str + " 00:00:00"
+    _d_end   = date_str + " 23:59:59"
+    try:
+        conn2 = mysql_new()
+        with conn2.cursor() as cur:
+            # 当日采集（新库正确结构）
+            cur.execute("""
+                SELECT
+                    hc.producer AS producer,
+                    ag.name AS vendor,
+                    hc.project_uuid AS project_id,
+                    IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0) / 3600.0 AS vsec_h
+                FROM human_case hc
+                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                LEFT JOIN auth.users au ON au.name = hc.producer
+                LEFT JOIN auth.user_group aug ON aug.user_uuid = au.uuid
+                LEFT JOIN auth.`groups` ag ON ag.id = aug.group_uuid AND ag.biz_type = 'produce'
+                WHERE hcn.node_name='human_case_upload'
+                  AND hcn.node_status=3
+                  AND hcn.node_updated_at BETWEEN %s AND %s
+            """, [_d_start, _d_end])
+            for r in cur.fetchall():
+                p = r["producer"]; pid = r["project_id"] or ""
+                if not p: continue
+                person_data[p]["vendor"] = r["vendor"] or person_data[p]["vendor"]
+                if pid in _new_wrist_uuids_cache:
+                    person_data[p]["wrist_upload_h"] += float(r["vsec_h"] or 0)
+                else:
+                    person_data[p]["pt_upload_h"] += float(r["vsec_h"] or 0)
+
+            # 新库累计 upload 时长（用于判断老人 total_collect_h >= 10h）
+            cur.execute("""
+                SELECT hc.producer,
+                       SUM(IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0))/3600.0 AS total_h
+                FROM human_case hc
+                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                WHERE hcn.node_name = 'human_case_upload'
+                  AND hcn.node_status = 3
+                GROUP BY hc.producer
+            """)
+            for r in cur.fetchall():
+                p = r["producer"]
+                if not p: continue
+                person_data[p]["total_collect_h"] = max(
+                    person_data[p]["total_collect_h"],
+                    float(r["total_h"] or 0)
+                )
+
+            # 采集抽检（新库，按 project_uuid 分腕部/PT）
+            cur.execute("""
+                SELECT
+                    hc.producer AS producer,
+                    hc.project_uuid AS project_id,
+                    SUM(CASE
+                        WHEN COALESCE(ns.sampling_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                        WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                        WHEN COALESCE(ns.inspect_status3,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                        ELSE 0 END)/3600.0 AS qc_h,
+                    SUM(CASE
+                        WHEN COALESCE(ns.sampling_status34,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                        WHEN COALESCE(ns.sampling_any,0)=1 THEN 0
+                        WHEN COALESCE(ns.inspect_status34,0)=1 THEN IFNULL(CAST(JSON_EXTRACT(pt.value,'$.data_info.duration') AS DECIMAL(15,4)),0)
+                        ELSE 0 END)/3600.0 AS inspected_h
+                FROM human_case hc
+                JOIN human_case_node hcn ON hcn.human_case_id = hc.id
+                LEFT JOIN human_case_tag pt ON pt.human_case_id = hc.id AND pt.type = 'produce_tags'
+                LEFT JOIN (
+                    SELECT hcn_qc.human_case_id,
+                        MAX(CASE WHEN hcn_qc.node_name='human_case_sampling' AND hcn_qc.node_status=3    THEN 1 ELSE 0 END) AS sampling_status3,
+                        MAX(CASE WHEN hcn_qc.node_name='human_case_sampling'                             THEN 1 ELSE 0 END) AS sampling_any,
+                        MAX(CASE WHEN hcn_qc.node_name='human_case_inspect'  AND hcn_qc.node_status=3   THEN 1 ELSE 0 END) AS inspect_status3,
+                        MAX(CASE WHEN hcn_qc.node_name='human_case_sampling' AND hcn_qc.node_status IN(3,4) THEN 1 ELSE 0 END) AS sampling_status34,
+                        MAX(CASE WHEN hcn_qc.node_name='human_case_inspect'  AND hcn_qc.node_status IN(3,4) THEN 1 ELSE 0 END) AS inspect_status34
+                    FROM human_case_node hcn_qc
+                    JOIN human_case_node hcn_pc ON hcn_pc.human_case_id = hcn_qc.human_case_id
+                        AND hcn_pc.node_name = 'human_case_upload'
+                        AND hcn_pc.node_status = 3
+                        AND hcn_pc.node_updated_at BETWEEN %s AND %s
+                    WHERE hcn_qc.node_name IN ('human_case_sampling','human_case_inspect')
+                    GROUP BY hcn_qc.human_case_id
+                ) ns ON ns.human_case_id = hc.id
+                WHERE hcn.node_name='human_case_upload'
+                  AND hcn.node_status=3
+                  AND hcn.node_updated_at BETWEEN %s AND %s
+                GROUP BY hc.producer, hc.project_uuid
+            """, [_d_start, _d_end, _d_start, _d_end])
+            for r in cur.fetchall():
+                p = r["producer"]; pid = r["project_id"] or ""
+                if not p: continue
+                if pid in _new_wrist_uuids_cache:
+                    person_data[p]["wrist_collect_qc_h"]        += float(r["qc_h"] or 0)
+                    person_data[p]["wrist_collect_inspected_h"] += float(r["inspected_h"] or 0)
+                else:
+                    person_data[p]["pt_collect_qc_h"]           += float(r["qc_h"] or 0)
+                    person_data[p]["pt_collect_inspected_h"]     += float(r["inspected_h"] or 0)
+        conn2.close()
+    except Exception:
+        import traceback; traceback.print_exc()
+
+    # ── 3. 按供应商汇总（只用老人，total_collect_h >= 10h）────────
+    vendors_map = defaultdict(list)
+    for p, d in person_data.items():
+        if d["total_collect_h"] >= 10:
+            vendors_map[d["vendor"]].append(d)
+
+    def _type_avg(lst, upload_key, qc_key, inspected_key):
+        """分母 = 有该类型采集数据的老人数，分子 = 这些人的数据总和"""
+        active = [x for x in lst if x[upload_key] > 0]
+        n = len(active)
+        if n == 0:
+            return {"upload_avg_h": 0, "collect_qc_avg_h": 0, "predicted_avg_h": 0, "active_count": 0}
+        total_upload   = sum(x[upload_key] for x in active)
+        total_qc       = sum(x[qc_key] for x in active)
+        total_inspected = sum(x[inspected_key] for x in active)
+        upload_avg  = round(total_upload / n, 2)
+        qc_avg      = round(total_qc / n, 2)
+        predicted   = round(total_upload * (total_qc / total_inspected) / n, 2) if total_inspected > 0 else 0
+        return {"upload_avg_h": upload_avg, "collect_qc_avg_h": qc_avg, "predicted_avg_h": predicted, "active_count": n}
+
+    result_vendors = []
+    for vname, seniors in sorted(vendors_map.items()):
+        n = len(seniors)
+        wrist_stats = _type_avg(seniors, "wrist_upload_h", "wrist_collect_qc_h", "wrist_collect_inspected_h")
+        pt_stats    = _type_avg(seniors, "pt_upload_h",    "pt_collect_qc_h",    "pt_collect_inspected_h")
+        # 原始人均：有任意采集数据的老人，分子=全部时长之和
+        active_any = [x for x in seniors if x["wrist_upload_h"] + x["pt_upload_h"] > 0]
+        upload_avg_total = round(sum(x["wrist_upload_h"] + x["pt_upload_h"] for x in active_any) / len(active_any), 2) if active_any else 0
+        result_vendors.append({
+            "vendor":       vname,
+            "senior_count": n,
+            "upload_avg_h": upload_avg_total,
+            "wrist": wrist_stats,
+            "pt":    pt_stats,
+        })
+
+    return {"date": date_str, "vendors": result_vendors}
+
+
+@app.route("/api/efficiency/daily")
+def efficiency_daily():
+    cron_token = os.environ.get("CRON_TOKEN", "")
+    req_token  = request.args.get("token", "")
+    if not session.get("logged_in") and not (cron_token and req_token == cron_token):
+        return jsonify({"error": "unauthorized"}), 401
+
+    date_str = request.args.get("date", str(date.today()))
+    save = request.args.get("save", "0") == "1"
+
+    # 先查磁盘缓存
+    disk = _load_efficiency_cache()
+    if date_str in disk and not save:
+        return jsonify(disk[date_str])
+
+    result = _compute_efficiency(date_str)
+
+    if save or True:  # 每次计算都存盘，方便历史查询
+        disk[date_str] = result
+        _save_efficiency_cache(disk)
+
+    return jsonify(result)
 
 
 # gunicorn 导入模块时触发预热（每个 worker 独立运行，磁盘缓存防重复计算）
