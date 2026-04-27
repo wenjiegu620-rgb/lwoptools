@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify, Response, send_from_directory, sessio
 from clickhouse_driver import Client
 import pymysql
 import urllib.request, urllib.error, ssl
+from metrics_helpers import dedupe_case_rows, aggregate_collect_rows, calc_online_hours
 
 # ─── UUID 校验 ────────────────────────────────────────────────
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
@@ -1499,68 +1500,54 @@ def vendor_collectors():
     finally:
         conn.close()
 
-    produce_rows = _dedupe_produce_rows(produce_rows)
+    produce_rows = dedupe_case_rows(produce_rows)
 
-    sessions_by_p = defaultdict(list)
-    vsec_by_p = defaultdict(float)
-    cases_by_p = defaultdict(int)
+    agg = aggregate_collect_rows(produce_rows)
+    sessions_by_p = agg["sessions_by_p"]
+    vsec_by_p = agg["vsec_by_p"]
+    cases_by_p = agg["cases_by_p"]
 
-    for row in produce_rows:
-        p = row["producer"]
-        sessions_by_p[p].append((row["t_start"], row["t_end"]))
-        vsec_by_p[p] += float(row["vsec"])
-        cases_by_p[p] += 1
+    online_info = calc_online_hours(sessions_by_p)
+    online_h_map = online_info["online_h_map"]
+    first_seen_map = online_info["first_seen_map"]
+    last_seen_map = online_info["last_seen_map"]
 
-    GAP = 30 * 60
     persons = []
     for p, segs in sessions_by_p.items():
-        points = sorted(set(e for _, e in segs))
-        if not points:
-            continue
-        online_sec = 0
-        seg_start = seg_end = points[0]
-        for pt in points[1:]:
-            if (pt - seg_end).total_seconds() <= GAP:
-                seg_end = pt
-            else:
-                online_sec += (seg_end - seg_start).total_seconds()
-                seg_start = seg_end = pt
-        online_sec += (seg_end - seg_start).total_seconds()
-
-        qc = qc_map.get(p, {})
-        qc_pass = int(qc.get("qc_cases") or 0)
-        qc_tot = int(qc.get("qc_total") or 0)
-        qc_h = float(qc.get("qc_h") or 0)
-        qc_total_h = float(qc.get("qc_total_h") or 0)
-        tqc = total_qc_map.get(p, {})
-        tqc_h = float(tqc.get("total_qc_h") or 0)
-        tqc_total_h = float(tqc.get("total_qc_total_h") or 0)
-        persons.append({
-            "producer":           p,
-            "first_collect_date": first_collect_map_v.get(p, ""),
-            # 累计
-            "total_collect_h": round(total_collect_map.get(p, 0), 1),
-            "total_qc_h":      round(tqc_h, 1),
-            "total_qc_rate":   round(tqc_h / tqc_total_h * 100, 1) if tqc_total_h > 0 else 0,
-            # 当日
-            "collect_cases":   cases_by_p[p],
-            "collect_h":       round(vsec_by_p[p] / 3600, 2),
-            "qc_cases":        qc_pass,
-            "qc_total":        qc_tot,
-            "qc_h":            round(qc_h, 2),
-            "qc_total_h":      round(qc_total_h, 2),
-            "qc_rate":         round(qc_h / qc_total_h * 100, 1) if qc_total_h > 0 else 0,
-            "collect_qc_h":        round(collect_qc_map.get(p, 0), 2),
-            "collect_inspected_h": round(collect_inspected_map.get(p, 0), 2),
-            "upload_h":            round(upload_h_map.get(p, 0), 2),
-            # 待质检 / 待抽检
-            "pending_inspect_h":  round(pending_inspect_map.get(p, 0), 1),
-            "pending_sampling_h": round(pending_sampling_map.get(p, 0), 1),
-            # 在线
-            "online_h":        round(online_sec / 3600, 2),
-            "first_seen":      segs[0][0].strftime("%H:%M"),
-            "last_seen":       segs[-1][1].strftime("%H:%M"),
-        })
+          qc = qc_map.get(p, {})
+          qc_pass = int(qc.get("qc_cases") or 0)
+          qc_tot = int(qc.get("qc_total") or 0)
+          qc_h = float(qc.get("qc_h") or 0)
+          qc_total_h = float(qc.get("qc_total_h") or 0)
+          tqc = total_qc_map.get(p, {})
+          tqc_h = float(tqc.get("total_qc_h") or 0)
+          tqc_total_h = float(tqc.get("total_qc_total_h") or 0)
+          persons.append({
+              "producer":           p,
+              "first_collect_date": first_collect_map_v.get(p, ""),
+              # 累计
+              "total_collect_h": round(total_collect_map.get(p, 0), 1),
+              "total_qc_h":      round(tqc_h, 1),
+              "total_qc_rate":   round(tqc_h / tqc_total_h * 100, 1) if tqc_total_h > 0 else 0,
+              # 当日
+              "collect_cases":   cases_by_p[p],
+              "collect_h":       round(vsec_by_p[p] / 3600, 2),
+              "qc_cases":        qc_pass,
+              "qc_total":        qc_tot,
+              "qc_h":            round(qc_h, 2),
+              "qc_total_h":      round(qc_total_h, 2),
+              "qc_rate":         round(qc_h / qc_total_h * 100, 1) if qc_total_h > 0 else 0,
+              "collect_qc_h":        round(collect_qc_map.get(p, 0), 2),
+              "collect_inspected_h": round(collect_inspected_map.get(p, 0), 2),
+              "upload_h":            round(upload_h_map.get(p, 0), 2),
+              # 待质检 / 待抽检
+              "pending_inspect_h":  round(pending_inspect_map.get(p, 0), 1),
+              "pending_sampling_h": round(pending_sampling_map.get(p, 0), 1),
+              # 在线
+              "online_h":        online_h_map.get(p, 0),
+              "first_seen":      first_seen_map.get(p, ""),
+              "last_seen":       last_seen_map.get(p, ""),
+          })
     persons.sort(key=lambda x: -x["collect_h"])
 
     tc = sum(p["collect_h"] for p in persons)
@@ -2604,94 +2591,79 @@ def collectors():
         import threading as _th3
         _th3.Thread(target=_bg_new_week_qc, daemon=True).start()
 
-    produce_rows = _dedupe_produce_rows(produce_rows)
+    produce_rows = dedupe_case_rows(produce_rows)
 
-    sessions_by_p = defaultdict(list)
-    vendor_by_p   = {}
-    vsec_by_p     = defaultdict(float)
-    cases_by_p    = defaultdict(int)
+    agg = aggregate_collect_rows(produce_rows)
+    sessions_by_p = agg["sessions_by_p"]
+    vendor_by_p = agg["vendor_by_p"]
+    vsec_by_p = agg["vsec_by_p"]
+    cases_by_p = agg["cases_by_p"]
+
     wrist_vsec_by_p = defaultdict(float)
-    pt_vsec_by_p    = defaultdict(float)
-
+    pt_vsec_by_p = defaultdict(float)
     for row in produce_rows:
-        p = row["producer"]
-        vendor_by_p[p] = row.get("vendor") or row.get("producer_group") or "未知"
-        sessions_by_p[p].append((row["t_start"], row["t_end"]))
-        vsec = float(row["vsec"])
-        vsec_by_p[p] += vsec
-        cases_by_p[p] += 1
-        pid = row.get("project_id") or ""
-        if pid in wrist_ids:
-            wrist_vsec_by_p[p] += vsec
-        else:
-            pt_vsec_by_p[p] += vsec
+          p = row.get("producer")
+          if not p:
+              continue
+          vsec = float(row.get("vsec") or 0)
+          pid = row.get("project_id") or ""
+          if pid in wrist_ids:
+              wrist_vsec_by_p[p] += vsec
+          else:
+              pt_vsec_by_p[p] += vsec
 
-    GAP = 30 * 60  # 30 分钟断点阈值
+    online_info = calc_online_hours(sessions_by_p)
+    online_h_map = online_info["online_h_map"]
+    first_seen_map = online_info["first_seen_map"]
+    last_seen_map = online_info["last_seen_map"]
 
     persons = []
     for p, segs in sessions_by_p.items():
-        # node_created_at == node_updated_at（打点型节点），用 t_end 作为时间点
-        # 按时间点排序，相邻点间隔 <= GAP 则归为同一活跃段
-        points = sorted(set(e for _, e in segs))
-        if not points:
-            continue
-        online_sec = 0
-        seg_start = points[0]
-        seg_end   = points[0]
-        for pt in points[1:]:
-            if (pt - seg_end).total_seconds() <= GAP:
-                seg_end = pt
-            else:
-                online_sec += (seg_end - seg_start).total_seconds()
-                seg_start = pt
-                seg_end   = pt
-        online_sec += (seg_end - seg_start).total_seconds()
-
-        c_h = vsec_by_p[p] / 3600
-        qc       = qc_map.get(p, {})
-        q_h      = float(qc.get("qc_h") or 0)
-        qc_pass  = int(qc.get("qc_cases") or 0)
-        qc_tot   = int(qc.get("qc_total") or 0)
-        tqc      = total_qc_map.get(p, {})
-        tqc_passed = int(tqc.get("total_qc_passed") or 0)
-        tqc_total  = int(tqc.get("total_qc_total") or 0)
-        _tot_h = round(total_collect_map.get(p, 0), 1)
-        persons.append({
-            "producer":           p,
-            "vendor":             vendor_by_p[p],
-            "first_collect_date": first_collect_map.get(p, ""),
-            "is_new":             _tot_h < 10,
-            # 累计
-            "total_collect_h":  _tot_h,
-            "total_qc_h":       round(tqc.get("total_qc_h") or 0, 1),
-            "total_qc_rate":    round(tqc_passed / tqc_total * 100, 1) if tqc_total > 0 else 0,
-            # 当日
-            "collect_cases":    cases_by_p[p],
-            "collect_h":        round(c_h, 2),
-            "qc_cases":         qc_pass,
-            "qc_total":         qc_tot,
-            "qc_h":             round(q_h, 2),
-            "qc_rate":          round(qc_pass / qc_tot * 100, 1) if qc_tot > 0 else 0,
-            "collect_qc_h":             round(collect_qc_map.get(p, 0), 2),
-            "collect_inspected_h":      round(collect_inspected_map.get(p, 0), 2),
-            "wrist_collect_qc_h":       round(wrist_collect_qc_map.get(p, 0), 2),
-            "wrist_collect_inspected_h":round(wrist_collect_inspected_map.get(p, 0), 2),
-            "pt_collect_qc_h":          round(pt_collect_qc_map.get(p, 0), 2),
-            "pt_collect_inspected_h":   round(pt_collect_inspected_map.get(p, 0), 2),
-            "upload_h":            round(upload_h_map.get(p, 0), 2),
-            "wrist_upload_h":      round(wrist_upload_map.get(p, 0), 2),
-            "pt_upload_h":         round(pt_upload_map.get(p, 0), 2),
-            "wrist_h":             round(wrist_vsec_by_p[p] / 3600, 2),
-            "pt_h":                round(pt_vsec_by_p[p] / 3600, 2),
-            # 本周
-            "week_qc_h":        round(week_qc_map.get(p, 0), 1),
-            # 待质检
-            "pending_qc_h":     round(pending_qc_map.get(p, 0), 1),
-            # 在线
-            "online_h":         round(online_sec / 3600, 2),
-            "first_seen":       segs[0][0].strftime("%H:%M"),
-            "last_seen":        segs[-1][1].strftime("%H:%M"),
-        })
+          c_h = vsec_by_p[p] / 3600
+          qc = qc_map.get(p, {})
+          q_h = float(qc.get("qc_h") or 0)
+          qc_pass = int(qc.get("qc_cases") or 0)
+          qc_tot = int(qc.get("qc_total") or 0)
+          tqc = total_qc_map.get(p, {})
+          tqc_passed = int(tqc.get("total_qc_passed") or 0)
+          tqc_total = int(tqc.get("total_qc_total") or 0)
+          _tot_h = round(total_collect_map.get(p, 0), 1)
+          persons.append({
+              "producer":           p,
+              "vendor":             vendor_by_p[p],
+              "first_collect_date": first_collect_map.get(p, ""),
+              "is_new":             _tot_h < 10,
+              # 累计
+              "total_collect_h":  _tot_h,
+              "total_qc_h":       round(tqc.get("total_qc_h") or 0, 1),
+              "total_qc_rate":    round(tqc_passed / tqc_total * 100, 1) if tqc_total > 0 else 0,
+              # 当日
+              "collect_cases":    cases_by_p[p],
+              "collect_h":        round(c_h, 2),
+              "qc_cases":         qc_pass,
+              "qc_total":         qc_tot,
+              "qc_h":             round(q_h, 2),
+              "qc_rate":          round(qc_pass / qc_tot * 100, 1) if qc_tot > 0 else 0,
+              "collect_qc_h":             round(collect_qc_map.get(p, 0), 2),
+              "collect_inspected_h":      round(collect_inspected_map.get(p, 0), 2),
+              "wrist_collect_qc_h":       round(wrist_collect_qc_map.get(p, 0), 2),
+              "wrist_collect_inspected_h":round(wrist_collect_inspected_map.get(p, 0), 2),
+              "pt_collect_qc_h":          round(pt_collect_qc_map.get(p, 0), 2),
+              "pt_collect_inspected_h":   round(pt_collect_inspected_map.get(p, 0), 2),
+              "upload_h":            round(upload_h_map.get(p, 0), 2),
+              "wrist_upload_h":      round(wrist_upload_map.get(p, 0), 2),
+              "pt_upload_h":         round(pt_upload_map.get(p, 0), 2),
+              "wrist_h":             round(wrist_vsec_by_p[p] / 3600, 2),
+              "pt_h":                round(pt_vsec_by_p[p] / 3600, 2),
+              # 本周
+              "week_qc_h":        round(week_qc_map.get(p, 0), 1),
+              # 待质检
+              "pending_qc_h":     round(pending_qc_map.get(p, 0), 1),
+              # 在线
+              "online_h":         online_h_map.get(p, 0),
+              "first_seen":       first_seen_map.get(p, ""),
+              "last_seen":        last_seen_map.get(p, ""),
+          })
 
     vendors_map = defaultdict(list)
     for p in persons:
