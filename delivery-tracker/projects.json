@@ -1,0 +1,513 @@
+{
+  "scene_mapping": {
+    "home": "家居",
+    "office": "办公室",
+    "outdoor": "户外",
+    "gym": "体育馆",
+    "auto_repair_shop": "汽修厂",
+    "coffee_shop": "咖啡厅",
+    "supermarket": "商超",
+    "factory": "汽修厂",
+    "indoor_sports_facility": "体育馆",
+    "public_plaza": "户外",
+    "park": "户外",
+    "street": "户外",
+    "distribution_center": "物流",
+    "model_factory": "工厂",
+    "school": "学校",
+    "retail": "商超",
+    "garment_factory": "工厂",
+    "": "家居",
+    "NULL": "家居",
+    "test_environment": "测试",
+    "公共广场": "户外",
+    "sports": "体育馆"
+  },
+  "projects": [
+    {
+      "name": "orange_200h",
+      "display_name": "Orange 200小时",
+      "delivery_date": "2026-03-17",
+      "base_total_hours": 200,
+      "scenes": [
+        {
+          "name": "家居",
+          "target_hours": 100
+        },
+        {
+          "name": "办公室",
+          "target_hours": 60
+        },
+        {
+          "name": "户外",
+          "target_hours": 40
+        }
+      ],
+      "query_projects": [
+        {
+          "id": "7a842923-987e-4345-8ddb-0b03019d5a1e",
+          "name": "grape_腕部相机"
+        },
+        {
+          "id": "a6043397-3469-490d-90b8-869ed3a58abf",
+          "name": "grape_腕部相机_户外_260311"
+        },
+        {
+          "id": "774f145e-85df-439f-86a6-552c2a2755b7",
+          "name": "grape_腕部相机_办公室_260311"
+        },
+        {
+          "id": "6dc5dfba-7825-48f0-8950-fca6f513ab40",
+          "name": "车规级腕部相机_户外_0321"
+        },
+        {
+          "id": "ae714091-5d6c-4dc3-b9ba-d6233c05d66a",
+          "name": "车规级腕部相机_居家_0317"
+        },
+        {
+          "id": "2146b967-4bf5-4ec5-a02c-34eaecc8f7ef",
+          "name": "车规级腕部相机_办公室_0317"
+        }
+      ],
+      "status": "inactive",
+      "newdb_only": true
+    },
+    {
+      "name": "grape_2000h",
+      "display_name": "Grape 2000小时",
+      "delivery_date": "2026-03-28",
+      "base_total_hours": 2000,
+      "scenes": [
+        {
+          "name": "家居",
+          "duration_ratio_min": 0.8,
+          "duration_ratio_max": 0.85,
+          "min_task_count": 300
+        },
+        {
+          "name": "办公室",
+          "duration_ratio_min": 0.05,
+          "duration_ratio_max": 0.1,
+          "min_task_count": 50
+        },
+        {
+          "name": "体育馆",
+          "duration_ratio_min": 0.05,
+          "duration_ratio_max": 0.1,
+          "min_task_count": 50
+        },
+        {
+          "name": "汽修厂",
+          "duration_ratio_min": 0.01,
+          "duration_ratio_max": 0.05,
+          "min_task_count": 10
+        },
+        {
+          "name": "户外",
+          "duration_ratio_min": 0.01,
+          "duration_ratio_max": 0.05,
+          "min_task_count": 10
+        },
+        {
+          "name": "咖啡厅",
+          "duration_ratio_min": 0.01,
+          "duration_ratio_max": 0.05,
+          "min_task_count": 10
+        },
+        {
+          "name": "商超",
+          "duration_ratio_min": 0.01,
+          "duration_ratio_max": 0.05,
+          "min_task_count": 10
+        }
+      ],
+      "query_projects": [
+        {
+          "id": "c64694e9-d150-4549-afdf-f52f8dd38ab2",
+          "name": "grape_商超_hand"
+        },
+        {
+          "id": "030250f7-5bb5-4150-8293-4e59939c7bf9",
+          "name": "grape_咖啡厅_hand"
+        },
+        {
+          "id": "4324476f-a763-4446-a339-376e270e06b5",
+          "name": "grape_户外_hand"
+        },
+        {
+          "id": "f1bb7fec-aedb-4d25-9aee-eee3d38600c3",
+          "name": "grape_体育馆/健身房_hand"
+        },
+        {
+          "id": "70edd964-4459-48e3-a4bb-5e582cca591e",
+          "name": "grape_办公室_hand"
+        },
+        {
+          "id": "0895aeeb-b80c-4b78-bd25-6ee6f6fbc0cb",
+          "name": "PICO+Tracker_国内_0128"
+        },
+        {
+          "id": "02de4444-77b4-459f-8f4f-9945242aa798",
+          "name": "PICO+Tracker_家居_0210_"
+        },
+        {
+          "id": "afd6997a-18cf-41c9-9afe-1ce377c52877",
+          "name": "PICO+Tracker_户外_0210"
+        },
+        {
+          "id": "1f1e89d0-4033-4b6e-80d4-1c2afd38b951",
+          "name": "PICO+Tracker_汽修厂_0210"
+        },
+        {
+          "id": "cdf06ebf-41d1-40f6-bb83-d7b6a12d628a",
+          "name": "PICO+Tracker_体育馆_0210"
+        },
+        {
+          "id": "8f98f175-0ac8-4a0d-9bdd-c81b99585461",
+          "name": "PICO+Tracker_办公室_0210"
+        },
+        {
+          "id": "c54c2794-9b78-4ad3-9609-ba5c0697ad33",
+          "name": "1x_home_0301"
+        },
+        {
+          "id": "9bbf002f-8533-48e6-8dc2-48bd7ea96aea",
+          "name": "PICO+Tracker_Malaysia"
+        },
+        {
+          "id": "60c0b6e5-97bd-4215-aa25-299b0dd7a21a",
+          "name": "P+T_India_0214"
+        },
+        {
+          "id": "12f031f3-cb76-4a2c-aac1-ff0647a13100",
+          "name": "P+T_India_0302"
+        },
+        {
+          "id": "d70326b5-3314-482d-bb6d-409452bb6cdd",
+          "name": "P+T_India_0228_TT"
+        },
+        {
+          "id": "9d509d3e-cb53-4b14-958b-f297e4be8df5",
+          "name": "P+T_India_0307_Shaip"
+        },
+        {
+          "id": "58986969-6f63-4e33-9745-eed0e579c5fe",
+          "name": "P+T_Malaysia+0209"
+        },
+        {
+          "id": "e66dc483-29c2-4525-a7e9-eeae73deb269",
+          "name": "P+T_Thailand_0214"
+        },
+        {
+          "id": "2108d0b9-4b17-4e29-ad01-9e23304c3e8c",
+          "name": "P+T_Thailand_0209"
+        },
+        {
+          "id": "deb701a7-c13a-4ea9-ab65-84788359b8c5",
+          "name": "P+T_Thailand_0203"
+        },
+        {
+          "id": "65f2c40d-9f7b-4dc8-817c-69ce6451d834",
+          "name": "P+T_Indonesia_LA_0225"
+        },
+        {
+          "id": "76f5bbb4-2119-4b2e-aa45-e9648433bc98",
+          "name": "P+T_Indonesia_LA_0302"
+        },
+        {
+          "id": "dcc76219-222a-42a4-bdd7-05848ed57139",
+          "name": "P+T_Thailand_0302"
+        }
+      ],
+      "status": "inactive"
+    },
+    {
+      "name": "mango_500h",
+      "display_name": "Mango 500小时",
+      "delivery_date": "2026-05-11",
+      "base_total_hours": 500,
+      "dedup_by_producer_scene": true,
+      "scenes": [
+        {
+          "name": "家居",
+          "target_hours": 500
+        }
+      ],
+      "query_projects": [
+        {
+          "id": "434950e9-2167-40e7-a7f4-a389ad1962d6",
+          "name": "Mango腕部相机-500小时-0320"
+        },
+        {
+          "id": "3efa993c-0265-4b82-a745-abdb3e0df4c3",
+          "name": "mango_腕部相机"
+        },
+        {
+          "id": "fbe09a16-5c90-4931-9b59-9a3bdc2839bc",
+          "name": "mango_腕部相机_0301"
+        },
+        {
+          "id": "5f755f75-2e04-4dc5-9ecd-62a0e142f54f",
+          "name": "mango_腕部相机_0302"
+        },
+        {
+          "id": "642e3df8-a7a0-4ee8-b9e4-337b15e44c92",
+          "name": "mango_腕部相机_0306"
+        }
+      ],
+      "status": "active",
+      "dedup_mode": "task_producer_global_cap",
+      "dedup_task_cap_hours": 1,
+      "query_tag": "Mango",
+      "newdb_only": true,
+      "packed_node": "lerobot_v6",
+      "packed_dedup_task_cap_hours": 1
+    },
+    {
+      "name": "mango-egodex_1000h",
+      "display_name": "Mango-Egodex 1000小时",
+      "delivery_date": "2026-05-11",
+      "scenes": [],
+      "query_projects": [
+        {
+          "id": "244fee62-2d55-4da9-a8e0-052566e103cf",
+          "name": "mango_egodex"
+        }
+      ],
+      "status": "active",
+      "base_total_hours": 1000.0,
+      "daily_targets": [
+        {
+          "date": "2026-03-25",
+          "target_hours": 112.5,
+          "domestic": 97.5,
+          "southeast_asia": 15
+        },
+        {
+          "date": "2026-03-26",
+          "target_hours": 127.5,
+          "domestic": 112.5,
+          "southeast_asia": 15
+        },
+        {
+          "date": "2026-03-27",
+          "target_hours": 142.5,
+          "domestic": 112.5,
+          "southeast_asia": 30
+        },
+        {
+          "date": "2026-03-28",
+          "target_hours": 142.5,
+          "domestic": 112.5,
+          "southeast_asia": 30
+        },
+        {
+          "date": "2026-03-30",
+          "target_hours": 157.5,
+          "domestic": 127.5,
+          "southeast_asia": 30
+        },
+        {
+          "date": "2026-03-31",
+          "target_hours": 172.5,
+          "domestic": 127.5,
+          "southeast_asia": 45
+        },
+        {
+          "date": "2026-04-01",
+          "target_hours": 187.5,
+          "domestic": 142.5,
+          "southeast_asia": 45
+        },
+        {
+          "date": "2026-04-02",
+          "target_hours": 187.5,
+          "domestic": 142.5,
+          "southeast_asia": 45
+        },
+        {
+          "date": "2026-04-03",
+          "target_hours": 202.5,
+          "domestic": 142.5,
+          "southeast_asia": 60
+        },
+        {
+          "date": "2026-04-04",
+          "target_hours": 60.0,
+          "domestic": 0.0,
+          "southeast_asia": 60
+        },
+        {
+          "date": "2026-04-06",
+          "target_hours": 60.0,
+          "domestic": 0.0,
+          "southeast_asia": 60
+        },
+        {
+          "date": "2026-04-07",
+          "target_hours": 195.0,
+          "domestic": 135.0,
+          "southeast_asia": 60
+        },
+        {
+          "date": "2026-04-08",
+          "target_hours": 210.0,
+          "domestic": 135.0,
+          "southeast_asia": 75
+        },
+        {
+          "date": "2026-04-09",
+          "target_hours": 210.0,
+          "domestic": 135.0,
+          "southeast_asia": 75
+        },
+        {
+          "date": "2026-04-10",
+          "target_hours": 225.0,
+          "domestic": 150.0,
+          "southeast_asia": 75
+        },
+        {
+          "date": "2026-04-11",
+          "target_hours": 225.0,
+          "domestic": 150.0,
+          "southeast_asia": 75
+        },
+        {
+          "date": "2026-04-13",
+          "target_hours": 80.0,
+          "domestic": 0.0,
+          "southeast_asia": 80
+        },
+        {
+          "date": "2026-04-14",
+          "target_hours": 80.0,
+          "domestic": 0.0,
+          "southeast_asia": 80
+        },
+        {
+          "date": "2026-04-15",
+          "target_hours": 80.0,
+          "domestic": 0.0,
+          "southeast_asia": 80
+        }
+      ],
+      "dedup_by_producer_scene": true,
+      "dedup_mode": "cap_only",
+      "packed_dedup_task_cap_hours": 3,
+      "packed_dedup_enabled": true,
+      "query_tag": "Mango_egodex",
+      "dedup_task_cap_hours": 3,
+      "packed_node": "lerobot_v6"
+    },
+    {
+      "name": "grape_550h",
+      "display_name": "Grape 550小时",
+      "delivery_date": "待定",
+      "base_total_hours": 550,
+      "scenes": [
+        {
+          "name": "家居"
+        },
+        {
+          "name": "办公室"
+        },
+        {
+          "name": "户外"
+        }
+      ],
+      "query_projects": [
+        {
+          "id": "7a842923-987e-4345-8ddb-0b03019d5a1e",
+          "name": "grape_腕部相机"
+        },
+        {
+          "id": "a6043397-3469-490d-90b8-869ed3a58abf",
+          "name": "grape_腕部相机_户外_260311"
+        },
+        {
+          "id": "774f145e-85df-439f-86a6-552c2a2755b7",
+          "name": "grape_腕部相机_办公室_260311"
+        },
+        {
+          "id": "ae714091-5d6c-4dc3-b9ba-d6233c05d66a",
+          "name": "车规级腕部相机_居家_0317"
+        },
+        {
+          "id": "2146b967-4bf5-4ec5-a02c-34eaecc8f7ef",
+          "name": "车规级腕部相机_办公室_0317"
+        },
+        {
+          "id": "dc538525-5984-4aac-ae7b-8ceae2e33235",
+          "name": "车规级腕部相机_户外_0326"
+        }
+      ],
+      "status": "inactive",
+      "newdb_only": true
+    },
+    {
+      "name": "banana_50h",
+      "display_name": "Banana 50小时",
+      "delivery_date": "待定",
+      "scenes": [
+        {
+          "name": "家居"
+        }
+      ],
+      "query_projects": [
+        {
+          "id": "11e39b67-beb7-4688-ba97-100bda40c03a",
+          "name": "Banana_厨房_50h_260323"
+        }
+      ],
+      "status": "inactive",
+      "base_total_hours": 50.0
+    },
+    {
+      "name": "banana_1200h",
+      "display_name": "Banana 1200小时",
+      "delivery_date": "2026-05-10",
+      "base_total_hours": 1200,
+      "query_tag": "Banana",
+      "scenes": [],
+      "status": "active"
+    },
+    {
+      "name": "orange_200h",
+      "display_name": "Orange 200小时",
+      "delivery_date": "2026-05-11",
+      "base_total_hours": 200,
+      "query_tag": "Orange",
+      "scenes": [
+        {
+          "name": "家居",
+          "target_hours": 100
+        },
+        {
+          "name": "办公室",
+          "target_hours": 60
+        },
+        {
+          "name": "户外",
+          "target_hours": 40
+        }
+      ],
+      "status": "active",
+      "newdb_only": true
+    },
+    {
+      "name": "grape_550h",
+      "display_name": "Grape 550小时",
+      "delivery_date": "2026-05-18",
+      "base_total_hours": 550,
+      "query_tag": "Grape",
+      "scenes": [],
+      "status": "active",
+      "newdb_only": true
+    }
+  ],
+  "env_mapping": {
+    "public_plaza": "户外",
+    "distribution_center": "商超"
+  }
+}
