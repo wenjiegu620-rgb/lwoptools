@@ -1,0 +1,253 @@
+{
+  "聚航": {
+    "accounts": [
+      {
+        "username": "聚航_1",
+        "password": "3eBCz2h6ngdA",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "聚航_2",
+        "password": "zVRFkvGjtP2w",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "聚航_3",
+        "password": "KnckCcWjUJRz",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "聚航_4",
+        "password": "eJnugrfp2pUm",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "聚航_5",
+        "password": "3HYLZKKuryjC",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "聚航_6",
+        "password": "xkcsjdcgwkyq",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "梵科云": {
+    "accounts": [
+      {
+        "username": "梵科云_1",
+        "password": "kKuewtw9qNKX",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_2",
+        "password": "QGZtPeN8fahC",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_3",
+        "password": "s5rZPzJqaMcJ",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_4",
+        "password": "n8kXC56mNxMj",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_5",
+        "password": "y6cHH9AzNuyz",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_6",
+        "password": "y9QJyBy4XLY6",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_7",
+        "password": "4LBjKtmemfaK",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_8",
+        "password": "hnFJc77rtGVV",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_9",
+        "password": "Qw3gMuWNxpDe",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_10",
+        "password": "L2qn6rXYPExv",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_11",
+        "password": "qpucs9vSXxvk",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "梵科云_12",
+        "password": "GNE9eBJAeMR3",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "嘉创": {
+    "accounts": [
+      {
+        "username": "嘉创_1",
+        "password": "N5ybRFe6Vq7I",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "嘉创_2",
+        "password": "Rg6mGxFW9ytW",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "嘉创_3",
+        "password": "kKg3KN9973eM",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "嘉创_4",
+        "password": "TmfFWLNrtSkY",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "嘉创_5",
+        "password": "dWBSyJDvDkmX",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "泰国LA": {
+    "accounts": [
+      {
+        "username": "泰国LA_1",
+        "password": "5DszV7a7EOBT",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "数曙-马来": {
+    "accounts": [
+      {
+        "username": "数曙-马来_1",
+        "password": "FU04fuXQnIwe",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "山西BY": {
+    "accounts": [
+      {
+        "username": "山西BY_1",
+        "password": "B0HsQuIADXXR",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_2",
+        "password": "gz2Ju8DkvXMK",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_3",
+        "password": "GBAMkFxvNfD8",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_4",
+        "password": "NWXk7VUVWDQY",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_5",
+        "password": "Pyd2JPQpRXHQ",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_6",
+        "password": "3bCc3zyBAj2N",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_7",
+        "password": "xdT9SCMyAAPx",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_8",
+        "password": "WXb65wRbT5Cv",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_9",
+        "password": "QY8ZXPWFebm6",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "山西BY_10",
+        "password": "JGnXegGEfGvQ",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "慧用工": {
+    "accounts": [
+      {
+        "username": "慧用工_1",
+        "password": "2CehJfT2xdiX",
+        "created_at": "2026-04-09"
+      },
+      {
+        "username": "慧用工_2",
+        "password": "TCXpsdCHcUXq",
+        "created_at": "2026-04-10"
+      },
+      {
+        "username": "慧用工_3",
+        "password": "qvLfMTvKKWPd",
+        "created_at": "2026-04-10"
+      }
+    ]
+  },
+  "创焱": {
+    "accounts": [
+      {
+        "username": "创焱_1",
+        "password": "QRYiWM6IgDrL",
+        "created_at": "2026-04-09"
+      }
+    ]
+  },
+  "泰盈采集-kiwi": {
+    "accounts": [
+      {
+        "username": "泰盈采集-kiwi_1",
+        "password": "ptuZtmR9muzn",
+        "created_at": "2026-05-28"
+      },
+      {
+        "username": "泰盈采集-kiwi_2",
+        "password": "Sf3Lc2E9yr4N",
+        "created_at": "2026-05-28"
+      },
+      {
+        "username": "泰盈采集-kiwi_3",
+        "password": "aU8FFvWVyDFx",
+        "created_at": "2026-05-28"
+      },
+      {
+        "username": "泰盈采集-kiwi_4",
+        "password": "vQfdRkGWqWP2",
+        "created_at": "2026-05-28"
+      }
+    ]
+  }
+}

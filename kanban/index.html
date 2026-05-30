@@ -1,0 +1,2928 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运营监测</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font: 14px/1.5714 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+  background: #0b0b1e; color: #e2e8f0;
+}
+input, button, select { font: inherit; }
+
+/* ── Variables ── */
+:root {
+  --primary: #1677ff;
+  --primary-hover: #4096ff;
+  --primary-bg: rgba(22,119,255,.15);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --border: rgba(99,102,241,.25);
+  --border-light: rgba(99,102,241,.15);
+  --sidebar-bg: #080818;
+  --topnav-h: 50px;
+  --header-h: 48px;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-secondary: #cbd5e1;
+  --radius: 8px;
+  --shadow-card: 0 1px 8px rgba(0,0,0,.4);
+}
+
+/* ── Layout ── */
+.layout { display: block; min-height: 100vh; }
+
+/* ── Top Nav ── */
+.topnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: var(--topnav-h);
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  display: flex; align-items: center; padding: 0 20px; gap: 0;
+}
+.topnav-logo {
+  font-size: 15px; font-weight: 700; color: #fff;
+  margin-right: 28px; white-space: nowrap; letter-spacing: .3px;
+}
+.topnav-tabs { display: flex; align-items: center; flex: 1; gap: 2px; }
+.nav-item {
+  padding: 6px 14px; border-radius: 6px;
+  color: rgba(255,255,255,.55); font-size: 13px;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.nav-item:hover { color: #fff; background: rgba(255,255,255,.07); }
+.nav-item.active { color: #fff; background: var(--primary); }
+.topnav-right { display: flex; align-items: center; gap: 4px; }
+.topnav-right .nav-item { font-size: 12px; padding: 5px 10px; }
+
+/* Main area */
+.main-area {
+  margin-left: 0;
+  width: 100%;
+  padding-top: var(--topnav-h);
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+
+/* Top bar */
+.topbar {
+  height: var(--header-h); background: #13132d;
+  border-bottom: 1px solid rgba(99,102,241,.2);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; position: sticky; top: 0; z-index: 50;
+}
+.breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; color: var(--text-muted);
+}
+.breadcrumb .sep { color: var(--border); font-size: 12px; }
+.breadcrumb .current { color: var(--text); font-weight: 500; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right input[type=date],
+.topbar-right input[type=number],
+.topbar-right input[type=text] {
+  height: 32px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 11px; font-size: 13px; color: var(--text); outline: none;
+  transition: border-color .2s;
+}
+.topbar-right input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(22,119,255,.1); }
+.topbar-field { display: flex; align-items: center; gap: 6px; }
+.topbar-label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border-light); }
+.countdown-badge {
+  font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+}
+.countdown-badge.ok   { background: rgba(74,222,128,.1);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.countdown-badge.warn { background: rgba(251,191,36,.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
+.countdown-badge.bad  { background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+
+/* Content */
+.content { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Cards */
+.card {
+  background: #13132d; border: 1px solid rgba(99,102,241,.2);
+  border-radius: var(--radius); box-shadow: var(--shadow-card);
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 0; margin-bottom: 14px;
+}
+.card-title {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title .dot {
+  width: 3px; height: 14px; background: var(--primary);
+  border-radius: 2px; flex-shrink: 0;
+}
+.card-body { padding: 0 20px 16px; }
+.card-body.no-top { padding-top: 0; }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat {
+  background: #13132d; border: 1px solid rgba(99,102,241,.2);
+  border-radius: var(--radius); padding: 16px 20px;
+  box-shadow: var(--shadow-card); position: relative; overflow: hidden;
+}
+.stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.stat-label { font-size: 13px; color: #94a3b8; }
+.stat-value { font-size: 28px; font-weight: 700; margin-top: 6px; color: #e2e8f0; line-height: 1; }
+.stat-sub { font-size: 12px; color: #64748b; margin-top: 6px; }
+.stat.success .stat-value { color: var(--success); }
+.stat.warning .stat-value { color: var(--warning); }
+.stat.danger  .stat-value { color: var(--danger); }
+
+/* Progress bar */
+.progress-bar { height: 6px; background: rgba(99,102,241,.15); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 15px; border-radius: 6px;
+  font-size: 13px; font-weight: 400; cursor: pointer;
+  border: 1px solid transparent; transition: all .15s;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary   { background: linear-gradient(135deg,#4f46e5,#38bdf8); color: #fff; border: none; }
+.btn-primary:hover:not(:disabled) { opacity: .88; }
+.btn-default   { background: rgba(99,102,241,.1); color: #e2e8f0; border-color: rgba(99,102,241,.3); }
+.btn-default:hover:not(:disabled) { background: rgba(99,102,241,.18); border-color: #6366f1; }
+.btn-success   { background: var(--success); color: #0b0b1e; border-color: var(--success); }
+.btn-warning   { background: var(--warning); color: #0b0b1e; border-color: var(--warning); }
+.btn-danger    { background: var(--danger);  color: #fff;    border-color: var(--danger); }
+.btn-text      { background: none; border-color: transparent; color: #818cf8; padding: 0 4px; height: auto; }
+.btn-text:hover { color: #a5b4fc; }
+.btn-sm { height: 28px; padding: 0 11px; font-size: 12px; }
+.btn-icon-only { width: 28px; height: 28px; padding: 0; justify-content: center;
+  background: none; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; }
+.btn-icon-only:hover { color: var(--danger); background: rgba(248,113,113,.1); }
+
+/* Form elements */
+.input {
+  height: 32px; border: 1px solid rgba(99,102,241,.35); border-radius: 6px;
+  padding: 0 11px; font-size: 13px; outline: none; transition: all .2s;
+  color: #e2e8f0; background: #080818;
+}
+.input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.15); }
+.input:hover:not(:focus) { border-color: #6366f1; }
+
+/* Search */
+.search-wrap { position: relative; }
+.search-input { width: 280px; padding-left: 30px; }
+.search-icon {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 13px; pointer-events: none;
+}
+.dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  width: 360px; background: #13132d;
+  border: 1px solid rgba(99,102,241,.25); border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5); max-height: 240px;
+  overflow-y: auto; z-index: 200;
+}
+.dropdown-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; font-size: 13px; color: #cbd5e1;
+}
+.dropdown-item:hover { background: rgba(99,102,241,.12); }
+.dropdown-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+/* Tags */
+.tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; margin-top: 10px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(99,102,241,.15); color: #818cf8;
+  border: 1px solid rgba(99,102,241,.3); border-radius: 4px;
+  padding: 1px 7px; font-size: 12px;
+}
+.tag-close { cursor: pointer; color: #6366f1; line-height: 1; font-size: 14px; }
+.tag-close:hover { color: var(--danger); }
+.tags-empty { font-size: 13px; color: var(--text-muted); }
+
+/* Pipeline config grid */
+.pipeline-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.pipeline-stage {
+  border: 1px solid rgba(99,102,241,.2); border-radius: 8px;
+  padding: 14px 16px; background: #0f0f25;
+}
+.pipeline-stage.parallel { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.08); }
+.pipeline-stage-name {
+  font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.parallel-badge {
+  font-size: 10px; background: rgba(99,102,241,.25); color: #a5b4fc;
+  border-radius: 3px; padding: 1px 5px; font-weight: 400;
+}
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; font-size: 13px;
+}
+.field-row:last-child { margin-bottom: 0; }
+.field-row label { color: var(--text-secondary); }
+.field-row .input { width: 72px; text-align: right; }
+
+/* Stock table */
+.ant-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ant-table th {
+  background: rgba(99,102,241,.08); font-weight: 500; font-size: 13px;
+  padding: 10px 16px; text-align: left;
+  border-bottom: 1px solid rgba(99,102,241,.15);
+  color: #94a3b8; white-space: nowrap;
+}
+.ant-table td {
+  padding: 10px 16px; border-bottom: 1px solid rgba(99,102,241,.1);
+  color: #cbd5e1;
+}
+.ant-table tr:last-child td { border-bottom: none; }
+.ant-table tbody tr:hover td { background: rgba(99,102,241,.08); }
+.ant-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ant-table tfoot td {
+  background: rgba(99,102,241,.08); font-weight: 600; border-top: 1px solid rgba(99,102,241,.15);
+  padding: 10px 16px; color: #e2e8f0;
+}
+
+/* Schedule table */
+.sched-input {
+  width: 88px; height: 28px; border: 1px solid transparent;
+  border-radius: 4px; padding: 0 8px; font-size: 13px;
+  text-align: right; background: transparent; outline: none;
+  color: #e2e8f0; transition: all .15s;
+}
+.sched-input:hover, .sched-input:focus {
+  border-color: #6366f1; background: #080818;
+  box-shadow: 0 0 0 2px rgba(99,102,241,.15);
+}
+
+/* Tags/badges */
+.badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 1px 7px; font-size: 12px; }
+.badge-success { background: rgba(74,222,128,.1);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.badge-danger  { background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+.badge-blue    { background: rgba(99,102,241,.15); color: #818cf8; border: 1px solid rgba(99,102,241,.3); }
+.badge-gray    { background: rgba(255,255,255,.06); color: #94a3b8; border: 1px solid rgba(255,255,255,.1); }
+
+/* Analysis layout */
+.analysis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.analysis-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(99,102,241,.12);
+  font-size: 13px;
+}
+.analysis-row:last-child { border-bottom: none; }
+.analysis-row.total { font-weight: 600; font-size: 15px; padding-top: 12px; }
+.analysis-row .val { font-variant-numeric: tabular-nums; font-weight: 500; }
+.analysis-row.success .val { color: var(--success); }
+.analysis-row.warning .val { color: var(--warning); }
+.analysis-row.danger  .val { color: var(--danger); }
+.divider { height: 1px; background: rgba(99,102,241,.15); margin: 8px 0; }
+
+/* Fill tools */
+.fill-tools {
+  background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.3); border-radius: 8px;
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap;
+}
+.fill-tools .label { font-size: 13px; color: #818cf8; font-weight: 500; flex-shrink: 0; }
+
+/* Banner */
+.banner {
+  display: none; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3);
+  border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #fbbf24;
+  margin-bottom: 12px;
+}
+.banner.visible { display: block; }
+
+/* Toolbar row */
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.toolbar .spacer { flex: 1; }
+
+/* Text utils */
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 12px; }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-danger  { color: var(--danger); }
+.text-primary { color: var(--primary); }
+.fw-600 { font-weight: 600; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+
+/* ── 采集统计 暗色主题 ── */
+.coll-page {
+  background: #0b0b1e;
+  min-height: calc(100vh - 48px);
+  padding: 20px 24px;
+  gap: 16px;
+}
+.coll-topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px;
+  background: #13132d;
+  border-radius: 10px;
+  border: 1px solid rgba(99,102,241,.2);
+}
+.coll-topbar-label { color: #94a3b8; font-size: 13px; }
+.coll-date-input {
+  height: 32px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid rgba(99,102,241,.35);
+  background: #0b0b1e; color: #e2e8f0; font-size: 13px; outline: none;
+}
+.coll-date-input:focus { border-color: #6366f1; }
+.coll-btn {
+  height: 32px; padding: 0 16px; border-radius: 6px;
+  background: linear-gradient(135deg,#4f46e5,#38bdf8);
+  color: #fff; font-size: 13px; border: none; cursor: pointer;
+  transition: opacity .15s;
+}
+.coll-btn:hover { opacity: .85; }
+.coll-status { font-size: 12px; color: #94a3b8; margin-left: 4px; }
+.coll-tab-btn {
+  height: 28px; padding: 0 14px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  border: 1px solid rgba(99,102,241,.3); background: transparent; color: #94a3b8; transition: all .15s;
+}
+.coll-tab-btn:hover { background: rgba(99,102,241,.1); color: #c7d2fe; }
+.coll-tab-active { background: rgba(99,102,241,.2) !important; color: #c7d2fe !important; border-color: rgba(99,102,241,.5) !important; }
+.proj-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.proj-table th { padding: 8px 14px; text-align: left; color: #64748b; font-weight: 500; font-size: 12px; background: rgba(99,102,241,.06); }
+.proj-table td { padding: 9px 14px; color: #cbd5e1; border-top: 1px solid rgba(99,102,241,.08); }
+.proj-table tr:hover td { background: rgba(99,102,241,.06); }
+.proj-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 汇总卡片 */
+.coll-summary {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+}
+.coll-stat {
+  background: #13132d;
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 10px; padding: 16px 18px;
+  position: relative; overflow: hidden;
+}
+.coll-stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.coll-stat-label { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+.coll-stat-value { font-size: 26px; font-weight: 700; color: #e2e8f0; line-height: 1; }
+.coll-stat-sub   { font-size: 11px; color: #64748b; margin-top: 4px; }
+.coll-stat.accent .coll-stat-value { background: linear-gradient(135deg,#818cf8,#38bdf8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+/* 供应商卡片 */
+.coll-vendor-card {
+  background: #13132d;
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+}
+.coll-vendor-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; cursor: pointer;
+  transition: background .15s;
+}
+.coll-vendor-header:hover { background: rgba(99,102,241,.08); }
+.coll-vendor-name { font-size: 15px; font-weight: 600; color: #c7d2fe; }
+.coll-vendor-meta { display: flex; gap: 20px; align-items: center; }
+.coll-vendor-stat { text-align: right; }
+.coll-vendor-stat-val { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+.coll-vendor-stat-lbl { font-size: 11px; color: #64748b; }
+.coll-vendor-badge {
+  padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 500;
+  background: rgba(99,102,241,.15); color: #818cf8;
+  border: 1px solid rgba(99,102,241,.3);
+}
+.coll-chevron { color: #64748b; font-size: 12px; transition: transform .2s; }
+.coll-vendor-card.open .coll-chevron { transform: rotate(90deg); }
+
+/* 人员明细表 */
+.coll-persons { display: none; }
+.coll-vendor-card.open .coll-persons { display: block; }
+.coll-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.coll-table th {
+  padding: 8px 16px; text-align: left;
+  color: #64748b; font-weight: 500; font-size: 12px;
+  border-top: 1px solid rgba(99,102,241,.15);
+  background: rgba(99,102,241,.06);
+}
+.coll-table td {
+  padding: 9px 16px;
+  color: #cbd5e1;
+  border-top: 1px solid rgba(99,102,241,.08);
+}
+.coll-table tr:hover td { background: rgba(99,102,241,.06); }
+.coll-rate-bar {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.coll-rate-track {
+  width: 50px; height: 4px; background: rgba(255,255,255,.08);
+  border-radius: 2px; overflow: hidden;
+}
+.coll-rate-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg,#4f46e5,#38bdf8);
+}
+.coll-tag-time {
+  font-size: 11px; color: #94a3b8;
+  background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.2);
+  border-radius: 4px; padding: 1px 6px;
+}
+
+/* ── 交付进度卡片 ── */
+.dv-card {
+  background: #13132d; border-radius: 12px; padding: 16px 18px;
+  width: 340px; cursor: pointer; border: 1px solid rgba(99,102,241,.2);
+  transition: border-color .15s, transform .1s;
+}
+.dv-card:hover { border-color: rgba(99,102,241,.6); transform: translateY(-2px); }
+.dv-card-name { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Top Nav ── -->
+<nav class="topnav">
+  <span class="topnav-logo">运营监测</span>
+  <div class="topnav-tabs">
+    <div class="nav-item active" data-page="collectors" onclick="switchPage('collectors')">采集详情</div>
+    <div class="nav-item" data-page="delivery" onclick="switchPage('delivery')">交付进度</div>
+    <div class="nav-item" data-page="weekcompare" onclick="switchPage('weekcompare')">周对比</div>
+  </div>
+  <div class="topnav-right">
+    <div class="nav-item" onclick="window.open('/performance.html', '_blank')">人员绩效</div>
+    <a id="accountsLink" href="/admin/accounts" class="nav-item" style="display:none;text-decoration:none;color:rgba(255,255,255,.55)">账号管理</a>
+    <a href="/logout" class="nav-item" style="text-decoration:none;color:rgba(255,255,255,.55)">退出</a>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<div class="main-area">
+
+  <!-- ── 采集统计 ── -->
+  <div class="content coll-page" id="pageCollectors" style="display:none">
+    <!-- 顶部日期 -->
+    <div class="coll-topbar">
+      <span class="coll-topbar-label">日期</span>
+      <input type="date" id="collDate" class="coll-date-input">
+      <button class="coll-btn" onclick="loadCollTab()">查询</button>
+      <button class="coll-btn" style="background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8" id="collExportBtn" onclick="exportCollectorsExcel()">导出 Excel</button>
+      <button id="collWatchFilterAll" class="coll-btn" onclick="setCollVendorFilter('all')">全部供应商</button>
+      <button id="collWatchFilterWatch" class="coll-btn" style="background:#1e293b;border:1px solid rgba(251,191,36,.3);color:#fbbf24" onclick="setCollVendorFilter('watch')">我的关注</button>
+      <span id="collStatus" class="coll-status"></span>
+      <span id="collUpdatedAt" style="font-size:12px;color:var(--text-muted)"></span>
+      <!-- tab 切换 -->
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button id="tabBtnPerson" class="coll-tab-btn coll-tab-active" onclick="switchCollTab('person')">按采集员</button>
+        <button id="tabBtnProject" class="coll-tab-btn" onclick="switchCollTab('project')">按项目</button>
+        <button id="tabBtnWrist" class="coll-tab-btn" onclick="switchCollTab('wrist')">腕部相机人效</button>
+        <button id="tabBtnPT" class="coll-tab-btn" onclick="switchCollTab('pt')">P+T 人效</button>
+        <button id="tabBtnEfficiency" class="coll-tab-btn" onclick="switchCollTab('efficiency')">人效统计</button>
+      </div>
+    </div>
+
+    <!-- 汇总卡片 -->
+    <div class="coll-summary" id="collSummary"></div>
+
+    <!-- 按采集员 -->
+    <div id="collTabPerson">
+      <div id="collVendors"></div>
+    </div>
+
+    <!-- 按项目 -->
+    <div id="collTabProject" style="display:none">
+      <div id="collProjectWrap"></div>
+    </div>
+
+    <!-- 腕部相机人效 -->
+    <div id="collTabWrist" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;color:#94a3b8;flex:1" id="wristExportStatus"></span>
+        <button class="btn btn-default btn-sm" onclick="exportWristExcel()">导出近7天 Excel</button>
+      </div>
+      <div id="collWristWatch" style="margin-bottom:16px"></div>
+      <div id="collWristWrap"></div>
+    </div>
+
+    <!-- P+T 人效 -->
+    <div id="collTabPT" style="display:none">
+      <div id="collPTWatch" style="margin-bottom:16px"></div>
+      <div id="collPTWrap"></div>
+    </div>
+    <div id="collTabEfficiency" style="display:none">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <span style="color:var(--text-secondary);font-size:13px">日期</span>
+        <input type="date" id="effDate" class="coll-date-input" value="">
+        <button class="btn btn-sm" onclick="loadEfficiency()" style="background:var(--primary);color:#fff;border:none">查询</button>
+        <span id="effStatus" style="font-size:12px;color:var(--text-secondary)"></span>
+      </div>
+      <div id="effWrap"></div>
+    </div>
+  </div><!-- /pageCollectors -->
+
+  <!-- ── 交付进度 ── -->
+  <div class="content" id="pageDelivery" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <span style="font-size:18px;font-weight:600;color:#e2e8f0">交付进度</span>
+      <span id="deliveryUpdatedAt" style="font-size:12px;color:#94a3b8"></span>
+      <button id="deliveryRefreshBtn" onclick="triggerDeliveryRefresh()"
+        style="padding:4px 14px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:13px">
+        刷新数据
+      </button>
+      <span id="deliveryRefreshingTip" style="font-size:12px;color:#f59e0b;display:none">🔄 数据更新中，约需 10 分钟…</span>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#94a3b8;margin-left:8px" title="去重规则：仅对开启去重的项目生效">
+        <input type="checkbox" id="deliveryDedupToggle" onchange="renderDeliveryCards()" style="accent-color:#6366f1;width:14px;height:14px">
+        显示去重数据
+      </label>
+    </div>
+
+    <!-- 项目卡片 -->
+    <div id="deliveryCards" style="display:flex;flex-wrap:wrap;gap:16px"></div>
+
+    <!-- 空状态 -->
+    <div id="deliveryEmpty" style="display:none;padding:40px;text-align:center;color:#64748b">
+      <div style="font-size:36px;margin-bottom:8px">📦</div>
+      <div>暂无数据，数据首次加载约需 10 分钟</div>
+    </div>
+
+    <!-- 项目详情展开区 -->
+    <div id="deliveryDetail" style="display:none;margin-top:24px;background:#13132d;border-radius:12px;padding:20px;border:1px solid rgba(99,102,241,.2)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <span id="deliveryDetailTitle" style="font-size:16px;font-weight:600;color:#e2e8f0"></span>
+        <button onclick="closeDeliveryDetail()"
+          style="margin-left:auto;padding:3px 12px;border-radius:6px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px">关闭</button>
+      </div>
+      <div id="deliveryDetailContent"></div>
+    </div>
+  </div><!-- /pageDelivery -->
+
+  <!-- ── 周对比 ── -->
+  <div class="content" id="pageWeekCompare" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:18px;font-weight:600;color:#e2e8f0">供应商周对比</span>
+      <input type="week" id="wcWeek"
+        style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;font-size:13px">
+      <button onclick="loadWeekCompare()"
+        style="padding:4px 16px;border-radius:6px;border:1px solid #6366f1;background:#6366f1;color:#fff;cursor:pointer;font-size:13px">查询</button>
+      <span id="wcStatus" style="font-size:12px;color:#94a3b8"></span>
+    </div>
+    <div id="wcPeriod" style="font-size:13px;color:#64748b;margin-bottom:20px"></div>
+    <div id="wcOverallCards" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px"></div>
+    <div id="wcVendorTable"></div>
+  </div><!-- /pageWeekCompare -->
+
+
+</div><!-- /main-area -->
+</div><!-- /layout -->
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const _d = new Date(); const TODAY = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+
+// 提前声明所有模块变量，避免 TDZ 错误
+let _collVendorFilter = localStorage.getItem('collVendorFilter') || 'all';
+let _collData = null;
+let _collSparklines = {};
+let _collProjectData = null;
+let _collActiveTab = 'person';
+let _wristData = null;
+let _ptData = null;
+let _watchList = {wrist: [], pt: []};
+let _deliveryData = {};
+let _deliveryPollTimer = null;
+
+let state = loadState() || {
+  selectedProjects: [],
+  stockData: {},
+  schedule: [],
+};
+
+// ── Persistence ──────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem('lw_schedule_v3', JSON.stringify({
+      ...state,
+      config: getConfig(),
+      project: {
+        client:   v('hClient'),
+        name:     v('hProject'),
+        deadline: v('hDeadline'),
+        target:   v('hTarget'),
+      },
+    }));
+  } catch {}
+}
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('lw_schedule_v3') || 'null');
+    if (!s) return null;
+    if (s.project) setTimeout(() => {
+      setVal('hClient',   s.project.client   || 'grape');
+      setVal('hProject',  s.project.name     || 'mango');
+      setVal('hDeadline', s.project.deadline || '2026-04-03');
+      setVal('hTarget',   s.project.target   || '550');
+    }, 0);
+    if (s.config) setTimeout(() => { setConfig(s.config); onConfigChange(); }, 0);
+    let schedule = s.schedule||[];
+    // 自愈：检测旧 bug 留下的所有行日期相同的坏数据
+    if (schedule.length > 2) {
+      const dates = new Set(schedule.map(r=>r.date));
+      if (dates.size === 1) schedule = [];
+    }
+    return { selectedProjects: s.selectedProjects||[], stockData: s.stockData||{}, schedule };
+  } catch { return null; }
+}
+
+function v(id) { return document.getElementById(id)?.value || ''; }
+function setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+
+// ── Config ───────────────────────────────
+function getConfig() {
+  return {
+    qc_rate:   pf('qcRate'),     qcDays:   pi('qcDays'),
+    sem_rate:  pf('semRate'),    semDays:  pi('semDays'),
+    pose_rate: pf('poseRate'),   poseDays: pi('poseDays'),
+    pack_rate: pf('packRate'),   pkgDays:  pi('pkgDays'),
+  };
+}
+function setConfig(c) {
+  setVal('qcRate',   (c.qc_rate   || 85).toFixed(1));  setVal('qcDays',   c.qcDays   ||1);
+  setVal('semRate',  (c.sem_rate  || 98).toFixed(1));  setVal('semDays',  c.semDays  ||3);
+  setVal('poseRate', (c.pose_rate || 98).toFixed(1));  setVal('poseDays', c.poseDays ||3);
+  setVal('packRate', (c.pack_rate || 90).toFixed(1));  setVal('pkgDays',  c.pkgDays  ||1);
+}
+function pf(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+function pi(id) { return parseInt(document.getElementById(id)?.value)   || 0; }
+
+function onConfigChange() {
+  const c = getConfig();
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalDays = c.qcDays + labelDays + c.pkgDays;
+  const yield_ = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  setText('totalDaysDisplay',   totalDays);
+  setText('overallYieldDisplay', (yield_*100).toFixed(1)+'%');
+  setText('yieldHDisplay',      (yield_*100).toFixed(1));
+  renderAll(); saveState();
+}
+function setText(id, val) { const el=document.getElementById(id); if(el) el.textContent=val; }
+
+// ── Helpers ──────────────────────────────
+function fh(h) { return (+h).toFixed(1) + ' h'; }
+function addDays(ds, n) {
+  const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function dateDiff(a, b) { return Math.round((new Date(b)-new Date(a))/86400000); }
+
+// ── Project search ───────────────────────
+let _st = null;
+document.getElementById('searchInput').addEventListener('focus', function() {
+  this.value = '';
+  hideDD();
+});
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(_st); const q = this.value.trim();
+  if (!q) { hideDD(); document.querySelectorAll('.sidebar-ctag').forEach(el=>el.classList.remove('active')); return; }
+  document.querySelectorAll('.sidebar-ctag').forEach(el =>
+    el.classList.toggle('active', el.dataset.c === q.toLowerCase()));
+  _st = setTimeout(() => doSearch(q), 300);
+});
+document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) hideDD(); });
+
+async function doSearch(q) {
+  try {
+    const r = await fetch(`/api/projects?q=${encodeURIComponent(q)}`);
+    const items = await r.json();
+    const dd = document.getElementById('searchDropdown');
+    if (!items.length) {
+      dd.innerHTML = '<div class="dropdown-empty">无匹配项目</div>';
+    } else {
+      dd.innerHTML = items.map(p => {
+        const checked = state.selectedProjects.some(s => s.id === p.id);
+        return `<label class="dropdown-item">
+          <input type="checkbox" ${checked?'checked':''} onchange="toggleProject('${esc(p.id)}','${esc(p.name)}',this.checked)">
+          ${esc(p.name)}
+        </label>`;
+      }).join('');
+    }
+    dd.style.display = 'block';
+  } catch(e) { console.error('搜索失败', e); }
+}
+function hideDD() { document.getElementById('searchDropdown').style.display = 'none'; }
+function quickFilter(keyword) {
+  // 切到排期页，自动加载该客户最新排期
+  switchPage('collectors');
+  // 等 schedInitPage 完成后（异步），找名称包含 keyword 的最新排期并加载
+  const tryLoad = () => {
+    const match = schedState.schedules.find(s =>
+      s.name.toLowerCase().includes(keyword.toLowerCase()) ||
+      (s.project_names||[]).some(n => n.toLowerCase().includes(keyword.toLowerCase()))
+    );
+    if (match) {
+      document.getElementById('schedSelect').value = match.id;
+      schedLoad(match.id);
+    } else {
+      // 没有已保存排期，则在搜索框里预填关键词方便快速搜索
+      const input = document.getElementById('searchInput');
+      if (input) { input.value = keyword; doSearch(keyword); }
+    }
+  };
+  // schedInitPage 是 async，等它完成
+  setTimeout(tryLoad, 600);
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function toggleProject(id, name, checked) {
+  if (checked) { if (!state.selectedProjects.some(p=>p.id===id)) state.selectedProjects.push({id,name}); }
+  else state.selectedProjects = state.selectedProjects.filter(p=>p.id!==id);
+  schedState.selectedProjs = state.selectedProjects.map(p => ({id:p.id, name:p.name}));
+  renderTags(); updateCount(); saveState();
+}
+function clearSelection() {
+  state.selectedProjects=[]; state.stockData={};
+  renderTags(); updateCount(); renderStock(); renderAll(); saveState();
+}
+function renderTags() {
+  const row = document.getElementById('tagsRow');
+  if (!row) return;
+  if (!state.selectedProjects.length) { row.innerHTML='<span class="tags-empty">尚未选择采集项目</span>'; return; }
+  row.innerHTML = state.selectedProjects.map(p =>
+    `<span class="tag">${esc(p.name)}<span class="tag-close" onclick="toggleProject('${esc(p.id)}','',false)">×</span></span>`
+  ).join('');
+}
+function updateCount() {
+  const n = state.selectedProjects.length;
+  setText('selectedCount', n ? n+'个项目' : '未选择');
+}
+
+// ── Stock fetch ──────────────────────────
+async function fetchStock(force = false) {
+  if (!state.selectedProjects.length) { alert('请先选择采集项目'); return; }
+  const btn = document.getElementById('fetchStockBtn');
+  const btn2 = document.getElementById('fetchStockCacheBtn');
+  btn.disabled=true; btn2.disabled=true; btn.textContent='拉取中…';
+  try {
+    const ids = state.selectedProjects.map(p=>p.id).join(',');
+    const url = `/api/stock?projects=${encodeURIComponent(ids)}${force ? '&force=1' : ''}`;
+    const r = await fetch(url);
+    state.stockData = await r.json();
+    // 显示拉取时间（取第一个项目的 fetched_at）
+    const firstItem = Object.values(state.stockData)[0];
+    if (firstItem && firstItem.fetched_at) {
+      setText('stockFetchedAt', '数据时间：' + firstItem.fetched_at);
+    }
+    renderStock(); renderAll(); saveState();
+  } catch(e) { alert('拉取失败: '+e.message); }
+  finally { btn.disabled=false; btn2.disabled=false; btn.textContent='拉取最新'; }
+}
+
+// ── Stock calc ───────────────────────────
+function computeStockSummary() {
+  const c = getConfig();
+  const deadline = v('hDeadline');
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalPL = c.qcDays + labelDays + c.pkgDays;
+  const qcY = c.qc_rate/100, labY = (c.sem_rate/100)*(c.pose_rate/100), pkgY = c.pack_rate/100;
+
+  let agg={packaged_h:0,labeled_h:0,lab_ing_h:0,sem_ing_h:0,pose_ing_h:0,qc_passed_h:0,qc_pending_h:0,collected_h:0};
+  for (const d of Object.values(state.stockData)) for (const k of Object.keys(agg)) agg[k]+=(d[k]||0);
+
+  const rows=[], push=(stage,raw,deliverable,days,note='')=>{
+    const arriveDate = addDays(TODAY, days);
+    const ok = arriveDate <= deadline;
+    rows.push({stage,raw,deliverable,arriveDate,ok,days,note});
+    return ok ? deliverable : 0;
+  };
+
+  let total = 0;
+  total += push('打包完成（可交付）',   agg.packaged_h,  agg.packaged_h, 0);
+  total += push('标注完成 / 待打包',    Math.max(0,agg.labeled_h-agg.packaged_h),
+                Math.max(0,agg.labeled_h-agg.packaged_h)*pkgY, c.pkgDays);
+  const inLab = Math.max(0, agg.lab_ing_h - agg.labeled_h);
+  const labNote = (agg.sem_ing_h||agg.pose_ing_h)
+    ? `语义标注中 ${agg.sem_ing_h.toFixed(1)}h，手势标注中 ${agg.pose_ing_h.toFixed(1)}h`:'';
+  total += push('标注中（语义+手势）', inLab, inLab*labY*pkgY, labelDays+c.pkgDays, labNote);
+  total += push('质检通过 / 待标注', Math.max(0,agg.qc_passed_h-agg.lab_ing_h-agg.labeled_h-agg.packaged_h),
+                Math.max(0,agg.qc_passed_h-agg.lab_ing_h-agg.labeled_h-agg.packaged_h)*labY*pkgY, labelDays+c.pkgDays);
+  total += push('待采集质检（在途）', agg.qc_pending_h, agg.qc_pending_h*qcY*labY*pkgY, totalPL);
+
+  return {rows, totalDeliverableByDeadline: total};
+}
+
+function renderStock() {
+  const tbody = document.getElementById('stockBody');
+  const tfoot = document.getElementById('stockFoot');
+  if (!tbody) return;
+  if (!Object.keys(state.stockData).length) {
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">请先关联采集项目并点击「拉取存量」</td></tr>';
+    tfoot.innerHTML=''; return;
+  }
+  const {rows,totalDeliverableByDeadline} = computeStockSummary();
+  const deadline = v('hDeadline');
+  document.getElementById('stockWarning').classList.toggle('visible',
+    Object.values(state.stockData).some(d=>d.collected_h===0));
+
+  tbody.innerHTML = rows.map(row => {
+    const raw = row.raw<.05?'<span class="text-muted">—</span>':fh(row.raw);
+    const del = row.deliverable<.05?'<span class="text-muted">—</span>'
+      :`<span class="${row.ok?'text-success':'text-danger'}">${fh(row.deliverable)}</span>`;
+    const arr = row.days===0 ? '<span class="badge badge-success">✓ 已可交付</span>'
+      : row.ok ? `<span class="badge badge-blue">${row.arriveDate}</span>`
+               : `<span class="badge badge-danger">${row.arriveDate} 超期</span>`;
+    const contrib = row.ok
+      ? `<span class="text-success">✓ ${fh(row.deliverable)}</span>`
+      : `<span class="text-danger">✗ 超期</span>`;
+    return `<tr>
+      <td>${row.stage}${row.note?`<span class="text-muted text-sm"> （${row.note}）</span>`:''}</td>
+      <td class="num">${raw}</td><td class="num">${del}</td>
+      <td class="num">${arr}</td><td class="num">${contrib}</td>
+    </tr>`;
+  }).join('');
+  tfoot.innerHTML = `<tr>
+    <td colspan="3" class="fw-600">合计（截止 ${deadline} 前可到位）</td>
+    <td class="num"></td>
+    <td class="num text-primary fw-600">${fh(totalDeliverableByDeadline)}</td>
+  </tr>`;
+}
+
+// ── Schedule ─────────────────────────────
+function computeRow(row) {
+  const c = getConfig();
+  const labelDays = Math.max(c.semDays, c.poseDays);
+  const totalDays = c.qcDays + labelDays + c.pkgDays;
+  const afterQC  = row.planned * (c.qc_rate/100);
+  const afterLab = afterQC * (c.sem_rate/100) * (c.pose_rate/100);
+  const afterPkg = afterLab * (c.pack_rate/100);
+  const delivDate = addDays(row.date, totalDays);
+  return {afterQC, afterLab, afterPkg, delivDate, ok: delivDate<=v('hDeadline')};
+}
+
+function addRow(dateStr, planned) {
+  const date = dateStr || getNextDate();
+  state.schedule.push({date, planned: planned??0});
+  renderScheduleTable(); saveState();
+}
+function getNextDate() {
+  if (!state.schedule.length) return TODAY;
+  return addDays(state.schedule[state.schedule.length-1].date, 1);
+}
+function fillDays() {
+  const deadline = v('hDeadline');
+  const existing = new Set(state.schedule.map(r=>r.date));
+  let d = TODAY;
+  while(d <= deadline) {
+    if(!existing.has(d)){ state.schedule.push({date:d, planned:0}); existing.add(d); }
+    d = addDays(d, 1);
+  }
+  state.schedule.sort((a,b) => a.date < b.date ? -1 : 1);
+  if(!state.schedule.length) state.schedule.push({date:TODAY, planned:0});
+  renderScheduleTable(); saveState();
+}
+function clearSchedule() { state.schedule=[]; renderScheduleTable(); saveState(); }
+function removeRow(i) { state.schedule.splice(i,1); renderScheduleTable(); saveState(); }
+function updatePlanned(i,val) { state.schedule[i].planned=parseFloat(val)||0; renderScheduleTable(); saveState(); }
+
+function renderScheduleTable() {
+  const tbody = document.getElementById('schedBody');
+  if (!tbody) return;
+  if (!state.schedule.length) {
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">暂无排期，点击「填充至截止日」后使用填入工具</td></tr>';
+    renderSummary(); return;
+  }
+  tbody.innerHTML = state.schedule.map((row,i)=>{
+    const r = computeRow(row);
+    const badge = r.ok ? '<span class="badge badge-success">✓ 有效</span>'
+                       : '<span class="badge badge-danger">✗ 超期</span>';
+    return `<tr>
+      <td>${row.date}</td>
+      <td class="num"><input class="sched-input" type="number" value="${row.planned}" min="0" step="0.5"
+        onchange="updatePlanned(${i},this.value)" oninput="updatePlanned(${i},this.value)"></td>
+      <td class="num">${row.planned>0?fh(r.afterQC):'—'}</td>
+      <td class="num">${row.planned>0?fh(r.afterLab):'—'}</td>
+      <td class="num">${row.planned>0?fh(r.afterPkg):'—'}</td>
+      <td class="num">${r.delivDate}</td>
+      <td>${badge}</td>
+      <td><button class="btn-icon-only" onclick="removeRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+  renderSummary();
+}
+
+// ── Fill tools (user-driven, no AI) ──────
+function getGapRaw() {
+  const target = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const newDel = state.schedule.reduce((s,row)=>{ const r=computeRow(row); return s+(r.ok?r.afterPkg:0); },0);
+  const c = getConfig();
+  const overallYield = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  const gap = target - stockDel - newDel;
+  const effRows = state.schedule.filter(row=>computeRow(row).ok);
+  return {gap, overallYield, effRows, stockDel, newDel, target};
+}
+
+// 填产能工具专用：gap 不计当前 planned 值，每次从存量净缺口重新分配
+function getGapForFill() {
+  const target = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const c = getConfig();
+  const overallYield = (c.qc_rate/100) * (c.sem_rate/100) * (c.pose_rate/100) * (c.pack_rate/100);
+  const gap = target - stockDel;
+  const effRows = state.schedule.filter(row=>computeRow(row).ok);
+  return {gap, overallYield, effRows, stockDel, target};
+}
+
+function fillEven() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const perDay = needed / effRows.length;
+  effRows.forEach(row => { row.planned = Math.ceil(perDay * 10) / 10; });
+  updateFillHint(`均摊：每天需采集 ${fh(perDay)}（共 ${effRows.length} 个有效天）`);
+  renderScheduleTable(); saveState();
+}
+
+function fillFrontLoad() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const n = effRows.length;
+  // 前 60% 的天分配 70% 的量，后 40% 分配 30%
+  const split = Math.ceil(n * 0.6);
+  const front = (needed * 0.7) / Math.max(1, split);
+  const back  = (needed * 0.3) / Math.max(1, n - split);
+  effRows.forEach((row, i) => { row.planned = Math.ceil((i<split?front:back)*10)/10; });
+  updateFillHint(`前置：前${split}天 ${fh(front)}/天，后${n-split}天 ${fh(back)}/天`);
+  renderScheduleTable(); saveState();
+}
+
+function fillBackLoad() {
+  if (!state.schedule.length) { alert('请先填充日期行'); return; }
+  const {gap, overallYield, effRows} = getGapForFill();
+  if (!effRows.length) { updateFillHint('⚠️ 没有有效采集天（所有日期均超期）'); return; }
+  if (gap <= 0) { effRows.forEach(row => { row.planned = 0; }); updateFillHint('✓ 存量已满足目标，采集量已清零'); renderScheduleTable(); saveState(); return; }
+  const needed = gap / overallYield;
+  const n = effRows.length;
+  const split = Math.ceil(n * 0.4);
+  const front = (needed * 0.3) / Math.max(1, split);
+  const back  = (needed * 0.7) / Math.max(1, n - split);
+  effRows.forEach((row, i) => { row.planned = Math.ceil((i<split?front:back)*10)/10; });
+  updateFillHint(`后置：前${split}天 ${fh(front)}/天，后${n-split}天 ${fh(back)}/天`);
+  renderScheduleTable(); saveState();
+}
+
+function updateFillHint(msg) { setText('fillHint', msg); }
+
+// ── Summary ───────────────────────────────
+function renderSummary() {
+  if (!document.getElementById('scTarget')) return;
+  const deadline = v('hDeadline');
+  const target   = parseFloat(v('hTarget'))||0;
+  const stockDel = Object.keys(state.stockData).length ? computeStockSummary().totalDeliverableByDeadline : 0;
+  const newDel   = state.schedule.reduce((s,row)=>{
+    if (row.date <= TODAY) return s;  // 只计算今天之后的排期
+    const r=computeRow(row);
+    return s+(r.ok?r.afterPkg:0);
+  },0);
+  const total    = stockDel + newDel;
+  const gap      = target - total;
+  const pct      = Math.min(100, total/target*100);
+
+  // Stats cards
+  setStatCard('scTarget', fh(target), '截止 '+deadline, '');
+  setStatCard('scStock',  fh(stockDel), '截止日前到位', '');
+  setStatCard('scNew',    fh(newDel),   '排期计划贡献', '');
+  setStatCard('scGap', (gap>0?'-':'+')+fh(Math.abs(gap)),
+    gap<=0 ? '✓ 已满足目标' : '还需补充采集',
+    gap<=0 ? 'success' : gap<target*.2 ? 'warning' : 'danger');
+
+  // Progress
+  const fill = document.getElementById('progressFill');
+  if (fill) { fill.style.width=pct+'%'; fill.style.background=gap<=0?'var(--success)':pct>70?'var(--warning)':'var(--danger)'; }
+
+  // Analysis
+  setText('aTarget',   fh(target));
+  setText('aStock',    fh(stockDel));
+  setText('aNew',      fh(newDel));
+  setText('aTotal',    fh(total)+' / '+fh(target));
+  setText('aNow',      TODAY);
+  setText('aDeadline', deadline);
+
+  const daysLeft = dateDiff(TODAY, deadline);
+  const c = getConfig();
+  const last = addDays(deadline, -(c.qcDays+Math.max(c.semDays,c.poseDays)+c.pkgDays));
+  const effDays = Math.max(0, dateDiff(TODAY, last)+1);
+  setText('aDaysLeft', daysLeft+' 天');
+  setText('aEffDays',  effDays+' 天');
+
+  const overallYield = (c.qc_rate/100)*(c.sem_rate/100)*(c.pose_rate/100)*(c.pack_rate/100);
+  if (gap>0 && effDays>0) setText('aSuggest', fh(gap/overallYield/effDays)+'/天');
+  else setText('aSuggest', gap<=0?'✓ 无需额外采集':'—');
+
+  // Gap row
+  const gapEl=document.getElementById('aGap'), gapRow=document.getElementById('aGapRow');
+  if (gapEl) gapEl.textContent = (gap>0?'-':'+')+fh(Math.abs(gap));
+  if (gapRow) gapRow.className = 'analysis-row '+(gap<=0?'success':gap<target*.2?'warning':'danger');
+  const totalRow=document.getElementById('aTotalRow');
+  if (totalRow) totalRow.className = 'analysis-row total '+(gap<=0?'success':gap<target*.2?'warning':'danger');
+
+  // Countdown
+  const cd = document.getElementById('hCountdown');
+  if (cd) {
+    cd.textContent = daysLeft>=0 ? `还有 ${daysLeft} 天` : '已超期';
+    cd.className = 'countdown-badge '+(daysLeft<=3?'bad':daysLeft<=7?'warn':'ok');
+  }
+}
+
+function setStatCard(id, value, sub, cls) {
+  const el = document.getElementById(id); if (!el) return;
+  el.querySelector('.stat-value').textContent = value;
+  el.querySelector('.stat-sub').textContent   = sub;
+  el.className = 'stat ' + cls;
+}
+
+// ── Header change handlers ────────────────
+['hClient','hProject','hDeadline','hTarget'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', ()=>{ renderAll(); saveState(); })
+);
+
+// ── Render all ───────────────────────────
+function renderAll() {}
+
+// ── Export CSV ───────────────────────────
+function exportCSV() {
+  const lines = ['日期,采集计划(h),采集质检通过(h),标注完成(h),打包完成(h),可交付日,状态'];
+  state.schedule.forEach(row=>{
+    const r=computeRow(row);
+    lines.push([row.date,row.planned,r.afterQC.toFixed(2),r.afterLab.toFixed(2),
+                r.afterPkg.toFixed(2),r.delivDate,r.ok?'有效':'超期'].join(','));
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'}));
+  a.download=`排期_${v('hProject')}_${TODAY}.csv`; a.click();
+}
+
+// ── 采集统计 ──────────────────────────────
+
+function sparkline(values, w = 100, h = 22) {
+  if (!values || values.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
+  const max = Math.max(...values), min = Math.min(...values);
+  const range = max - min || 1, pad = 3;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = (h - pad) - ((v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last = values[values.length - 1];
+  const lx = (w - pad).toFixed(1);
+  const ly = ((h - pad) - ((last - min) / range) * (h - pad * 2)).toFixed(1);
+  const avgFirst = values.slice(0, Math.floor(values.length / 2)).reduce((a, b) => a + b, 0) / Math.floor(values.length / 2) || 0;
+  const color = last >= avgFirst ? '#34d399' : '#fb923c';
+  return `<svg width="${w}" height="${h}" style="overflow:visible;vertical-align:middle">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="${lx}" cy="${ly}" r="2.5" fill="${color}"/>
+    <text x="${parseFloat(lx)+5}" y="${parseFloat(ly)+4}" font-size="9" fill="${color}" font-family="monospace">${last.toFixed(1)}h</text>
+  </svg>`;
+}
+
+async function loadCollSparklines(date) {
+  try {
+    const res = await fetch(`/api/collectors/sparklines?date=${date}&days=14`);
+    if (!res.ok) return;
+    const data = await res.json();
+    _collSparklines = data.producers || {};
+    document.querySelectorAll('[data-sparkline]').forEach(td => {
+      const p = td.dataset.sparkline;
+      if (_collSparklines[p]) td.innerHTML = sparkline(_collSparklines[p]);
+    });
+  } catch(e) { /* 静默失败 */ }
+}
+
+
+function switchCollTab(tab) {
+  _collActiveTab = tab;
+  document.getElementById('tabBtnPerson').className     = 'coll-tab-btn' + (tab === 'person'     ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnProject').className    = 'coll-tab-btn' + (tab === 'project'    ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnWrist').className      = 'coll-tab-btn' + (tab === 'wrist'      ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnPT').className         = 'coll-tab-btn' + (tab === 'pt'         ? ' coll-tab-active' : '');
+  document.getElementById('tabBtnEfficiency').className = 'coll-tab-btn' + (tab === 'efficiency' ? ' coll-tab-active' : '');
+  document.getElementById('collTabPerson').style.display     = tab === 'person'     ? '' : 'none';
+  document.getElementById('collTabProject').style.display    = tab === 'project'    ? '' : 'none';
+  document.getElementById('collTabWrist').style.display      = tab === 'wrist'      ? '' : 'none';
+  document.getElementById('collTabPT').style.display         = tab === 'pt'         ? '' : 'none';
+  document.getElementById('collTabEfficiency').style.display = tab === 'efficiency' ? '' : 'none';
+  if (tab === 'efficiency' && !document.getElementById('effWrap').innerHTML) loadEfficiency();
+  document.getElementById('collExportBtn').style.display  = tab === 'person'  ? '' : 'none';
+  if (tab === 'project' && !_collProjectData) loadCollectorsByProject(true);
+  if (tab === 'wrist') loadWristCamera(true);
+  if (tab === 'pt') loadPTCamera(true);
+}
+
+function loadCollTab() {
+  // 确保日期有值，否则自动填今天
+  const dateEl = document.getElementById('collDate');
+  if (!dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  _collData = null;
+  _collProjectData = null;
+  _wristData = null;
+  _ptData = null;
+  if (_collActiveTab === 'person') loadCollectors();
+  else if (_collActiveTab === 'project') loadCollectorsByProject();
+  else if (_collActiveTab === 'wrist') loadWristCamera();
+  else loadPTCamera();
+}
+
+async function loadCollectors(useCache = false) {
+  const d = document.getElementById('collDate').value;
+  if (!d) { document.getElementById('collStatus').textContent = '请选择日期'; return; }
+  document.getElementById('collStatus').textContent = '加载中…';
+  document.getElementById('collSummary').innerHTML = '';
+  document.getElementById('collVendors').innerHTML = '';
+  try {
+    const url = '/api/collectors?date=' + d + (useCache ? '' : '&refresh=1');
+    const res = await fetch(url);
+    const data = await res.json();
+    _collData = data;
+    document.getElementById('collStatus').textContent = '';
+    if (data.updated_at) {
+      document.getElementById('collUpdatedAt').textContent = '最后更新: ' + data.updated_at;
+    }
+    renderCollSummary(data);
+    renderCollVendors(data.vendors);
+    loadCollSparklines(d);
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function loadCollectorsByProject(useCache = false) {
+  const d = document.getElementById('collDate').value;
+  if (!d) { document.getElementById('collStatus').textContent = '请选择日期'; return; }
+  document.getElementById('collStatus').textContent = '加载中…';
+  document.getElementById('collProjectWrap').innerHTML = '';
+  try {
+    const url = '/api/collectors/by-project?date=' + d + (useCache ? '' : '&refresh=1');
+    const res = await fetch(url);
+    const data = await res.json();
+    _collProjectData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderCollByProject(data.projects || []);
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderCollByProject(projects) {
+  const wrap = document.getElementById('collProjectWrap');
+  if (!projects.length) {
+    wrap.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">暂无数据</div>';
+    return;
+  }
+  const totalCollect = projects.reduce((s, p) => s + p.collect_h, 0);
+  const totalQc      = projects.reduce((s, p) => s + p.qc_h, 0);
+  const totalPassed  = projects.reduce((s, p) => s + p.qc_passed, 0);
+  const totalQcAll   = projects.reduce((s, p) => s + p.qc_total, 0);
+  const overallRate  = totalQcAll > 0 ? (totalPassed / totalQcAll * 100).toFixed(1) : '-';
+
+  wrap.innerHTML = `
+    <div style="background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;overflow:hidden">
+      <div style="padding:12px 20px;border-bottom:1px solid rgba(99,102,241,.15);font-size:14px;font-weight:600;color:#c7d2fe;display:flex;gap:24px;align-items:center">
+        <span>按项目汇总（${projects.length} 个项目）</span>
+        <span style="font-size:12px;color:#64748b;font-weight:400">总采集 ${totalCollect.toFixed(1)}h &nbsp;·&nbsp; 质检通过 ${totalQc.toFixed(1)}h &nbsp;·&nbsp; 整体通过率 ${overallRate}%</span>
+      </div>
+      <table class="proj-table">
+        <thead><tr>
+          <th>#</th>
+          <th>项目名称</th>
+          <th class="num">当日采集数</th>
+          <th class="num">采集时长</th>
+          <th class="num">质检通过时长</th>
+          <th class="num">质检通过率</th>
+          <th class="num">参与采集员</th>
+        </tr></thead>
+        <tbody>
+          ${projects.map((p, i) => `<tr>
+            <td style="color:#475569;font-size:12px">${i + 1}</td>
+            <td style="color:#e2e8f0;font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.project_name}">${p.project_name}</td>
+            <td class="num">${p.collect_cases}</td>
+            <td class="num">${p.collect_h.toFixed(2)}h</td>
+            <td class="num">${p.qc_h.toFixed(2)}h</td>
+            <td class="num">
+              <div class="coll-rate-bar" style="justify-content:flex-end">
+                <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+                <span>${p.qc_rate}%</span>
+              </div>
+            </td>
+            <td class="num">${p.collector_count} 人</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function loadWristCamera(useCache = false) {
+  if (useCache && _wristData) { renderWristLike(_wristData, 'wrist'); return; }
+  const d = document.getElementById('collDate').value;
+  if (!d) { document.getElementById('collStatus').textContent = '请选择日期'; return; }
+  document.getElementById('collStatus').textContent = '加载中…';
+  try {
+    await loadWatchList();
+    const res = await fetch('/api/collectors/wrist-camera?date=' + d + (useCache ? '' : '&refresh=1'));
+    const data = await res.json();
+    _wristData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderWristLike(data, 'wrist');
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function loadPTCamera(useCache = false) {
+  if (useCache && _ptData) { renderWristLike(_ptData, 'pt'); return; }
+  const d = document.getElementById('collDate').value;
+  if (!d) { document.getElementById('collStatus').textContent = '请选择日期'; return; }
+  document.getElementById('collStatus').textContent = '加载中…';
+  try {
+    await loadWatchList();
+    const res = await fetch('/api/collectors/pt-camera?date=' + d + (useCache ? '' : '&refresh=1'));
+    const data = await res.json();
+    _ptData = data;
+    document.getElementById('collStatus').textContent = '';
+    renderWristLike(data, 'pt');
+  } catch(e) {
+    document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function loadEfficiency() {
+  const dateEl = document.getElementById('effDate');
+  const statusEl = document.getElementById('effStatus');
+  const wrap = document.getElementById('effWrap');
+  const d = dateEl.value || new Date().toISOString().slice(0,10);
+  dateEl.value = d;
+
+  // 如果采集员数据已加载且日期一致，直接从 _collData 计算
+  const collDate = document.getElementById('collDate')?.value;
+  if (_collData && collDate === d) {
+    statusEl.textContent = '';
+    renderEfficiencyFromCollData(_collData, d);
+    return;
+  }
+
+  // 否则先加载采集员数据
+  statusEl.textContent = '加载中…';
+  wrap.innerHTML = '';
+  try {
+    const res = await fetch('/api/collectors?date=' + d);
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const data = await res.json();
+    statusEl.textContent = '';
+    renderEfficiencyFromCollData(data, d);
+  } catch(e) {
+    statusEl.textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderEfficiencyFromCollData(collData, dateStr) {
+  const wrap = document.getElementById('effWrap');
+  if (!collData?.vendors?.length) {
+    wrap.innerHTML = '<div style="color:var(--text-secondary);padding:20px">暂无数据（请先在「按采集员」tab 查询当天数据）</div>';
+    return;
+  }
+
+  const avg = (persons, key) => {
+    const active = persons.filter(p => !p.is_new && (p[key] || 0) > 0);
+    if (!active.length) return 0;
+    return active.reduce((s, p) => s + (p[key] || 0), 0) / active.length;
+  };
+  const predicted = (persons, uploadKey, qcKey, inspKey) => {
+    const active = persons.filter(p => !p.is_new && (p[uploadKey] || 0) > 0);
+    if (!active.length) return 0;
+    const totalUpload = active.reduce((s, p) => s + (p[uploadKey] || 0), 0);
+    const totalQc     = active.reduce((s, p) => s + (p[qcKey] || 0), 0);
+    const totalInsp   = active.reduce((s, p) => s + (p[inspKey] || 0), 0);
+    if (!totalInsp) return 0;
+    return totalUpload * (totalQc / totalInsp) / active.length;
+  };
+
+  const rows = collData.vendors.map(v => {
+    const seniors = v.persons.filter(p => !p.is_new);
+    return {
+      vendor:       v.vendor,
+      senior_count: seniors.length,
+      upload_avg:   avg(v.persons, 'upload_h'),
+      wrist_upload: avg(v.persons, 'wrist_upload_h'),
+      wrist_qc:     avg(v.persons, 'wrist_collect_qc_h'),
+      wrist_pred:   predicted(v.persons, 'wrist_upload_h', 'wrist_collect_qc_h', 'wrist_collect_inspected_h'),
+      pt_upload:    avg(v.persons, 'pt_upload_h'),
+      pt_qc:        avg(v.persons, 'pt_collect_qc_h'),
+      pt_pred:      predicted(v.persons, 'pt_upload_h', 'pt_collect_qc_h', 'pt_collect_inspected_h'),
+    };
+  });
+
+  const cols = [
+    { key: 'vendor',       label: '供应商' },
+    { key: 'senior_count', label: '老人数' },
+    { key: 'upload_avg',   label: '原始人均(h)' },
+    { key: 'wrist_upload', label: '腕部原始人均(h)' },
+    { key: 'wrist_qc',     label: '腕部抽检人均(h)' },
+    { key: 'wrist_pred',   label: '腕部预测人均(h)' },
+    { key: 'pt_upload',    label: 'P+T原始人均(h)' },
+    { key: 'pt_qc',        label: 'P+T抽检人均(h)' },
+    { key: 'pt_pred',      label: 'P+T预测人均(h)' },
+  ];
+  const fmt = (v, key) => {
+    if (key === 'vendor') return v || '-';
+    if (key === 'senior_count') return v ?? '-';
+    return typeof v === 'number' ? v.toFixed(2) : '-';
+  };
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:var(--bg-secondary)">
+          ${cols.map(c => `<th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">${c.label}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r, i) => `
+          <tr style="background:${i%2===0?'var(--bg-primary)':'var(--bg-secondary)'}">
+            ${cols.map(c => `<td style="padding:7px 12px;border-bottom:1px solid var(--border)">${fmt(r[c.key], c.key)}</td>`).join('')}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div style="margin-top:8px;font-size:11px;color:var(--text-secondary)">
+      数据日期：${dateStr} · 老人定义：累计采集 ≥10h · 人均分母为老人总数
+    </div>`;
+}
+
+async function exportWristExcel() {
+  const statusEl = document.getElementById('wristExportStatus');
+  statusEl.textContent = '数据加载中…';
+  try {
+    const res = await fetch('/api/collectors/wrist-camera/range');
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const json = await res.json();
+    const { dates, vendors } = json;
+
+    // 日期列标题（MM-DD 格式）
+    const dateCols = dates.map(d => d.slice(5));  // "04-01"
+
+    const wb = XLSX.utils.book_new();
+    for (const [vendor, persons] of Object.entries(vendors)) {
+      const rows = [];
+      // 表头
+      rows.push(['采集员', ...dateCols, '合计(h)']);
+      // 按合计降序排列
+      const sorted = Object.entries(persons).sort((a, b) => {
+        const sumA = dates.reduce((s, d) => s + (a[1][d] || 0), 0);
+        const sumB = dates.reduce((s, d) => s + (b[1][d] || 0), 0);
+        return sumB - sumA;
+      });
+      for (const [producer, dayMap] of sorted) {
+        const vals = dates.map(d => +(dayMap[d] || 0).toFixed(2));
+        const total = +vals.reduce((s, v) => s + v, 0).toFixed(2);
+        rows.push([producer, ...vals, total]);
+      }
+      // 汇总行
+      const sumRow = ['合计'];
+      dates.forEach((d) => {
+        const s = sorted.reduce((acc, [, dm]) => acc + (dm[d] || 0), 0);
+        sumRow.push(+s.toFixed(2));
+      });
+      sumRow.push(+sumRow.slice(1).reduce((a, b) => a + b, 0).toFixed(2));
+      rows.push(sumRow);
+      // 平均人效行（活跃=当天有数据的人）
+      const avgRow = ['平均人效'];
+      dates.forEach((d) => {
+        const active = sorted.filter(([, dm]) => (dm[d] || 0) > 0);
+        const avg = active.length > 0
+          ? +(active.reduce((acc, [, dm]) => acc + (dm[d] || 0), 0) / active.length).toFixed(2)
+          : 0;
+        avgRow.push(avg);
+      });
+      avgRow.push('');
+      rows.push(avgRow);
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      // 列宽
+      ws['!cols'] = [{ wch: 16 }, ...dates.map(() => ({ wch: 8 })), { wch: 10 }];
+      // sheet 名最多 31 字符
+      XLSX.utils.book_append_sheet(wb, ws, vendor.slice(0, 31));
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `腕部相机人效_近7天_${today}.xlsx`);
+    statusEl.textContent = '';
+  } catch(e) {
+    statusEl.textContent = '导出失败: ' + e.message;
+  }
+}
+
+// ── 关注采集员 ────────────────────────────────────────────────────────────
+async function loadWatchList() {
+  try {
+    const [rw, rp] = await Promise.all([
+      fetch('/api/watch/list?tab=wrist').then(r => r.json()),
+      fetch('/api/watch/list?tab=pt').then(r => r.json()),
+    ]);
+    _watchList.wrist = rw.producers || [];
+    _watchList.pt    = rp.producers || [];
+  } catch(e) {}
+}
+
+async function toggleWatch(producer, tab) {
+  try {
+    const res = await fetch('/api/watch/toggle', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({producer, tab})
+    });
+    const d = await res.json();
+    _watchList[tab] = d.producers || [];
+    if (tab === 'wrist' && _wristData) renderWristLike(_wristData, 'wrist');
+    if (tab === 'pt'    && _ptData)    renderWristLike(_ptData,    'pt');
+  } catch(e) {}
+}
+
+function renderWristLike(data, tab) {
+  const wrapId  = tab === 'wrist' ? 'collWristWrap'  : 'collPTWrap';
+  const watchId = tab === 'wrist' ? 'collWristWatch' : 'collPTWatch';
+  const wrap    = document.getElementById(wrapId);
+  const watchEl = document.getElementById(watchId);
+  const watched = _watchList[tab] || [];
+
+  // 我的关注区域
+  const watchedPersons = [];
+  if (data.vendors) {
+    for (const v of data.vendors) {
+      for (const p of v.persons) {
+        if (watched.includes(p.producer)) watchedPersons.push({...p, group: v.group});
+      }
+    }
+  }
+  if (watchedPersons.length) {
+    watchEl.innerHTML = `
+      <div style="background:#0f172a;border:1px solid rgba(251,191,36,.3);border-radius:10px;overflow:hidden;margin-bottom:4px">
+        <div style="padding:8px 16px;border-bottom:1px solid rgba(251,191,36,.15);font-size:13px;font-weight:600;color:#fbbf24">⭐ 我的关注</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr>
+            ${['采集员','供应商','采集条数','采集时长','质检通过','待质检','待抽检','质检通过时长',''].map(h =>
+              `<th style="padding:6px 14px;text-align:${h===''?'center':'right'};first-child:text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(251,191,36,.06)">${h}</th>`
+            ).join('')}
+          </tr></thead>
+          <tbody>
+            ${watchedPersons.map(p => `<tr style="border-top:1px solid rgba(251,191,36,.08)">
+              <td style="padding:7px 14px;color:#fde68a;font-weight:500">${p.producer}</td>
+              <td style="padding:7px 14px;text-align:right;color:#94a3b8;font-size:12px">${p.group}</td>
+              <td style="padding:7px 14px;text-align:right;color:#cbd5e1">${p.collect_cases}</td>
+              <td style="padding:7px 14px;text-align:right;color:#cbd5e1">${p.collect_h.toFixed(2)}h</td>
+              <td style="padding:7px 14px;text-align:right;color:#4ade80;font-weight:600">${p.qc_passed}</td>
+              <td style="padding:7px 14px;text-align:right;color:#f59e0b">${p.pending_inspect}</td>
+              <td style="padding:7px 14px;text-align:right;color:#a78bfa">${p.pending_sampling}</td>
+              <td style="padding:7px 14px;text-align:right;color:#38bdf8">${p.qc_h.toFixed(2)}h</td>
+              <td style="padding:7px 14px;text-align:center"><button onclick="toggleWatch('${p.producer.replace(/'/g,"\\'")}','${tab}')" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;cursor:pointer">取消关注</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } else {
+    watchEl.innerHTML = '';
+  }
+
+  // 主列表
+  if (!data.vendors || !data.vendors.length) {
+    wrap.innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">该日期暂无数据</div>';
+    return;
+  }
+  const summaryHtml = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+      ${[
+        {label:'活跃采集员', val: data.total_persons + ' 人'},
+        {label:'当日采集条数', val: data.total_collect_cases + ' 条'},
+        {label:'质检通过条数', val: data.total_qc_cases + ' 条'},
+        {label:'质检通过时长', val: data.total_qc_h.toFixed(2) + 'h'},
+      ].map(s => `<div class="coll-stat">
+        <div class="coll-stat-label">${s.label}</div>
+        <div class="coll-stat-value">${s.val}</div>
+      </div>`).join('')}
+    </div>`;
+
+  const vendorBlocks = data.vendors.map(v => `
+    <div style="background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;overflow:hidden;margin-bottom:12px">
+      <div style="padding:10px 20px;border-bottom:1px solid rgba(99,102,241,.15);display:flex;align-items:center;gap:16px">
+        <span style="font-size:14px;font-weight:600;color:#c7d2fe">${v.group}</span>
+        <span style="font-size:12px;color:#64748b">${v.person_count} 人 &nbsp;·&nbsp; 采集 ${v.collect_cases} 条 &nbsp;·&nbsp; 质检通过 ${v.qc_passed} 条 &nbsp;·&nbsp; 待质检 ${v.pending_inspect} &nbsp;·&nbsp; 待抽检 ${v.pending_sampling} &nbsp;·&nbsp; ${v.qc_h.toFixed(2)}h</span>
+        <span style="margin-left:auto;font-size:13px;font-weight:600;color:#38bdf8">${v.person_count > 0 ? (v.qc_h / v.person_count).toFixed(2) : '0.00'}h<span style="font-size:11px;font-weight:400;color:#64748b;margin-left:4px">平均人效</span></span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="padding:7px 16px;text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集员</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集条数</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">采集时长</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">质检通过</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">待质检</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">待抽检</th>
+          <th style="padding:7px 16px;text-align:right;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">质检通过时长</th>
+          <th style="padding:7px 16px;text-align:center;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06)">关注</th>
+        </tr></thead>
+        <tbody>
+          ${v.persons.map(p => {
+            const isWatched = watched.includes(p.producer);
+            const rowOpacity = p.is_filtered ? 'opacity:0.45;' : '';
+            const filteredTip = p.is_filtered ? ' title="当日采集≤10条，不计入人均"' : '';
+            return `<tr style="border-top:1px solid rgba(99,102,241,.08);${rowOpacity}"${filteredTip}>
+              <td style="padding:8px 16px;color:#e2e8f0;font-weight:500">${p.producer}${p.is_filtered ? '<span style="margin-left:5px;font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(100,116,139,.25);color:#94a3b8">少</span>' : ''}</td>
+              <td style="padding:8px 16px;text-align:right;color:#cbd5e1">${p.collect_cases}</td>
+              <td style="padding:8px 16px;text-align:right;color:#cbd5e1">${p.collect_h.toFixed(2)}h</td>
+              <td style="padding:8px 16px;text-align:right;color:#4ade80;font-weight:600">${p.qc_passed}</td>
+              <td style="padding:8px 16px;text-align:right;color:#f59e0b">${p.pending_inspect}</td>
+              <td style="padding:8px 16px;text-align:right;color:#a78bfa">${p.pending_sampling}</td>
+              <td style="padding:8px 16px;text-align:right;color:#38bdf8">${p.qc_h.toFixed(2)}h</td>
+              <td style="padding:8px 16px;text-align:center">
+                <button onclick="toggleWatch('${p.producer.replace(/'/g,"\\'")}','${tab}')"
+                  style="font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid ${isWatched?'rgba(251,191,36,.5)':'rgba(99,102,241,.3)'};background:${isWatched?'rgba(251,191,36,.15)':'transparent'};color:${isWatched?'#fbbf24':'#64748b'}">
+                  ${isWatched ? '⭐' : '☆'}
+                </button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+
+  wrap.innerHTML = summaryHtml + vendorBlocks;
+}
+
+function renderWristCamera(data) {
+  renderWristLike(data, 'wrist');
+}
+
+function renderCollSummary(data) {
+  const seniorLabel = (data.senior_persons != null)
+    ? `老人 ${data.senior_persons} / 新人 ${data.junior_persons}`
+    : data.total_vendors + ' 家供应商';
+  const avgVal = (data.senior_avg_collect_h != null && data.senior_persons > 0)
+    ? data.senior_avg_collect_h.toFixed(1) + 'h'
+    : (data.total_persons > 0 ? (data.total_collect_h / data.total_persons).toFixed(1) + 'h' : '-');
+  const items = [
+    { label:'活跃采集员', value: data.total_persons, sub: seniorLabel, accent: true },
+    { label:'采集总时长', value: data.total_collect_h.toFixed(1) + 'h', sub: '原始视频' },
+    { label:'质检通过时长', value: data.total_qc_h.toFixed(1) + 'h', sub: '可流转数据' },
+    { label:'整体通过率', value: data.overall_qc_rate + '%', sub: '质检通过 / 采集' },
+    { label:'人均采集（老人）', value: avgVal, sub: '剔除新人后均值' },
+  ];
+  document.getElementById('collSummary').innerHTML = items.map(it =>
+    `<div class="coll-stat${it.accent?' accent':''}">
+      <div class="coll-stat-label">${it.label}</div>
+      <div class="coll-stat-value">${it.value}</div>
+      <div class="coll-stat-sub">${it.sub}</div>
+    </div>`
+  ).join('');
+}
+
+function _collWatchedVendors() {
+  return JSON.parse(localStorage.getItem('collWatchedVendors') || '[]');
+}
+function toggleCollVendorWatch(name) {
+  const w = _collWatchedVendors();
+  const i = w.indexOf(name);
+  if (i === -1) w.push(name); else w.splice(i, 1);
+  localStorage.setItem('collWatchedVendors', JSON.stringify(w));
+  if (_collData) renderCollVendors(_collData.vendors);
+}
+function setCollVendorFilter(mode) {
+  _collVendorFilter = mode;
+  localStorage.setItem('collVendorFilter', mode);
+  const allBtn   = document.getElementById('collWatchFilterAll');
+  const watchBtn = document.getElementById('collWatchFilterWatch');
+  if (allBtn) allBtn.style.cssText   = mode === 'all'
+    ? 'background:var(--primary);border:1px solid var(--primary);color:#fff'
+    : 'background:#1e293b;border:1px solid rgba(99,102,241,.3);color:#94a3b8';
+  if (watchBtn) watchBtn.style.cssText = mode === 'watch'
+    ? 'background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.6);color:#fbbf24'
+    : 'background:#1e293b;border:1px solid rgba(251,191,36,.3);color:#fbbf24';
+  if (_collData) renderCollVendors(_collData.vendors);
+}
+function renderCollVendors(vendors) {
+  const watched = _collWatchedVendors();
+  const filtered = _collVendorFilter === 'watch' && watched.length
+    ? vendors.filter(v => watched.includes(v.vendor))
+    : vendors;
+  if (!filtered.length) {
+    document.getElementById('collVendors').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">' + (_collVendorFilter === 'watch' ? '暂无关注的供应商' : '该日期暂无数据') + '</div>';
+    return;
+  }
+  document.getElementById('collVendors').innerHTML = filtered.map((v, vi) => {
+    // 预测人效：活跃人员（≥10条）的今日采集 × 已质检样本通过率 / 活跃人数
+    const active = v.persons.filter(p => p.collect_cases > 10);
+    const activeCollectH    = active.reduce((s, p) => s + (p.collect_h || 0), 0);
+    const activeInspectedH  = active.reduce((s, p) => s + (p.collect_inspected_h || 0), 0);
+    const activePassedH     = active.reduce((s, p) => s + (p.collect_qc_h || 0), 0);
+    const predictedEff = (activeInspectedH > 0 && active.length > 0)
+      ? activeCollectH * (activePassedH / activeInspectedH) / active.length
+      : null;
+    return `
+    <div class="coll-vendor-card" id="vc${vi}">
+      <div class="coll-vendor-header" onclick="toggleVendor(${vi})">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span onclick="event.stopPropagation();toggleCollVendorWatch('${v.vendor.replace(/'/g,"\\'")}')" style="cursor:pointer;font-size:18px;line-height:1;color:${watched.includes(v.vendor)?'#fbbf24':'#475569'}" title="${watched.includes(v.vendor)?'取消关注':'关注'}">${watched.includes(v.vendor)?'★':'☆'}</span>
+          <span class="coll-vendor-name">${v.vendor}</span>
+          <span class="coll-vendor-badge">${v.count} 人</span>
+          ${v.junior_count > 0 ? `<span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,.12);padding:1px 6px;border-radius:4px">新人 ${v.junior_count}</span>` : ''}
+        </div>
+        <div class="coll-vendor-meta">
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.total_collect_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">总采集</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.total_qc_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">质检通过</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.qc_rate}%</div>
+            <div class="coll-vendor-stat-lbl">通过率</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${v.avg_collect_h.toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">人均(老人)</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${(v.avg_wrist_h||0).toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">腕部人均</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${(v.avg_pt_h||0).toFixed(1)}h</div>
+            <div class="coll-vendor-stat-lbl">P+T人均</div>
+          </div>
+          <div class="coll-vendor-stat">
+            <div class="coll-vendor-stat-val">${predictedEff != null ? predictedEff.toFixed(1) + 'h' : '-'}</div>
+            <div class="coll-vendor-stat-lbl">预测人效</div>
+          </div>
+          <span class="coll-chevron">▶</span>
+        </div>
+      </div>
+      <div class="coll-persons">
+        <table class="coll-table">
+          <thead><tr>
+            <th>采集员</th>
+            <th>累计采集时长</th><th>累计质检通过时长</th><th>累计质检通过率</th>
+            <th>当日采集数</th><th>当日采集时长</th><th>当日质检通过时长</th><th>当日质检通过率</th>
+            <th>原始人效</th><th>采集抽检人效</th><th>腕部人效</th><th>P+T人效</th>
+            <th>本周质检通过时长</th><th>待质检时长</th><th>推断在线</th><th>活跃时段</th>
+          </tr></thead>
+          <tbody>
+            ${v.persons.map(p => `<tr>
+              <td style="line-height:1.3">
+                <span style="color:#e2e8f0;font-weight:500">${p.producer}</span>${p.is_new ? '<span style="margin-left:5px;font-size:10px;background:rgba(245,158,11,.18);color:#f59e0b;padding:1px 5px;border-radius:3px;vertical-align:middle">新</span>' : ''}${p.first_collect_date ? `<span style="margin-left:6px;font-size:11px;color:#475569;font-weight:400">${p.first_collect_date}</span>` : ''}
+                <div data-sparkline="${p.producer}" style="margin-top:4px">${_collSparklines[p.producer] ? sparkline(_collSparklines[p.producer]) : ''}</div>
+              </td>
+              <td>${p.total_collect_h.toFixed(1)}h</td>
+              <td>${p.total_qc_h.toFixed(1)}h</td>
+              <td>
+                <div class="coll-rate-bar">
+                  <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.total_qc_rate,100)}%"></div></div>
+                  <span>${p.total_qc_rate}%</span>
+                </div>
+              </td>
+              <td>${p.collect_cases}</td>
+              <td>${p.collect_h.toFixed(2)}h</td>
+              <td>${p.qc_h.toFixed(2)}h</td>
+              <td>
+                <div class="coll-rate-bar">
+                  <div class="coll-rate-track"><div class="coll-rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+                  <span>${p.qc_rate}%</span>
+                </div>
+              </td>
+              <td>${(p.upload_h||0).toFixed(2)}h</td>
+              <td>${(p.collect_qc_h||0).toFixed(2)}h</td>
+              <td>${(p.wrist_h||0).toFixed(2)}h</td>
+              <td>${(p.pt_h||0).toFixed(2)}h</td>
+              <td>${p.week_qc_h.toFixed(1)}h</td>
+              <td>${p.pending_qc_h.toFixed(1)}h</td>
+              <td>${p.online_h.toFixed(2)}h</td>
+              <td><span class="coll-tag-time">${p.first_seen} – ${p.last_seen}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `; }).join('');
+}
+
+function exportCollectorsExcel() {
+  if (!_collData || !_collData.vendors || !_collData.vendors.length) { alert('暂无数据'); return; }
+  const date = document.getElementById('collDate').value;
+  const headers = ['供应商','采集员','累计采集时长(h)','累计质检通过时长(h)','累计质检通过率(%)',
+    '当日采集数','当日采集时长(h)','当日质检通过时长(h)','当日质检通过率(%)',
+    '原始人效(h)','采集抽检人效(h)','腕部人效(h)','P+T人效(h)',
+    '本周质检通过时长(h)','待质检时长(h)','推断在线(h)','活跃时段'];
+  const rows = [];
+  for (const v of _collData.vendors) {
+    for (const p of v.persons) {
+      rows.push([
+        v.vendor, p.producer,
+        p.total_collect_h, p.total_qc_h, p.total_qc_rate,
+        p.collect_cases, p.collect_h, p.qc_h, p.qc_rate,
+        p.upload_h||0, p.collect_qc_h||0, p.wrist_h||0, p.pt_h||0,
+        p.week_qc_h, p.pending_qc_h, p.online_h, `${p.first_seen} – ${p.last_seen}`
+      ]);
+    }
+    const active = v.persons.filter(p => p.collect_cases > 10);
+    const avgEff = active.length > 0
+      ? +(active.reduce((s, p) => s + p.qc_h, 0) / active.length).toFixed(2)
+      : 0;
+    rows.push([v.vendor, `平均人效（活跃${active.length}人）`, '', '', '', '', '', avgEff, '', '', '', '', '']);
+  }
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '采集详情');
+  XLSX.writeFile(wb, `采集详情_${date}.xlsx`);
+}
+
+function toggleVendor(vi) {
+  document.getElementById('vc' + vi).classList.toggle('open');
+}
+
+
+
+// ── 周对比 ────────────────────────────────
+function _getCurrentISOWeek() {
+  const d = new Date();
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const diffDays = Math.floor((d - startOfWeek1) / 86400000);
+  const week = Math.floor(diffDays / 7) + 1;
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+async function loadWeekCompare() {
+  const w = document.getElementById('wcWeek').value;
+  if (!w) return;
+  const st = document.getElementById('wcStatus');
+  st.textContent = '查询中…';
+  try {
+    const data = await fetch('/api/vendor-week-compare?week=' + encodeURIComponent(w)).then(r => r.json());
+    _renderWeekCompare(data);
+    st.textContent = '';
+  } catch(e) {
+    st.textContent = '加载失败';
+  }
+}
+
+function _wcFmtPct(v) {
+  if (v == null) return '—';
+  return (v * 100).toFixed(1) + '%';
+}
+function _wcPctChange(oldV, newV) {
+  // 用展示精度（0.1h）判断是否为0，避免 0.04h 显示为 0 却算 -100%
+  const oldR = Math.round(oldV * 10) / 10;
+  const newR = Math.round(newV * 10) / 10;
+  if (oldR === 0) return newR > 0 ? '新增' : '—';
+  if (newR === 0 && oldR === 0) return '—';
+  const p = ((newV - oldV) / oldV * 100).toFixed(0);
+  return (p >= 0 ? '+' : '') + p + '%';
+}
+function _wcPpChange(oldV, newV) {
+  if (oldV == null && newV == null) return '—';
+  if (oldV == null) return '新增';
+  if (newV == null) return '—';
+  const pp = ((newV - oldV) * 100).toFixed(1);
+  return (parseFloat(pp) >= 0 ? '+' : '') + pp + '%';
+}
+function _wcColor(s) {
+  if (!s || s === '—' || s === '新增') return 'color:#94a3b8';
+  return s.startsWith('+') ? 'color:#22c55e' : 'color:#ef4444';
+}
+
+function _renderWeekCompare(data) {
+  const { this_week, last_week, overall, vendors } = data;
+
+  document.getElementById('wcPeriod').textContent =
+    `本周 ${this_week.start} ~ ${this_week.end}（${this_week.days}天）  vs  上周 ${last_week.start} ~ ${last_week.end}（${last_week.days}天）`;
+
+  // 关注的供应商（localStorage）
+  const _wcWatched = () => JSON.parse(localStorage.getItem('wcWatchVendors') || '[]');
+  const _wcToggle  = name => {
+    const w = _wcWatched();
+    const i = w.indexOf(name);
+    if (i === -1) w.push(name); else w.splice(i, 1);
+    localStorage.setItem('wcWatchVendors', JSON.stringify(w));
+  };
+
+  // 计算卡片聚合数据（关注优先，无关注则全部）
+  const watched = _wcWatched();
+  const cardSrc = watched.length ? vendors.filter(v => watched.includes(v.name)) : vendors;
+  const cardLabel = watched.length ? `关注供应商（${watched.length} 家）` : '全部供应商';
+
+  const _wcAgg   = (src, key) => src.reduce((s, v) => s + (v[key] || 0), 0);
+  const _wcWtQc  = (src, rateKey, hKey) => {
+    const th = _wcAgg(src, hKey); if (!th) return null;
+    return src.reduce((s, v) => s + (v[rateKey] || 0) * (v[hKey] || 0), 0) / th;
+  };
+  const twH  = _wcAgg(cardSrc, 'this_week_h'),  lwH  = _wcAgg(cardSrc, 'last_week_h');
+  const twAc = _wcAgg(cardSrc, 'this_week_active'), lwAc = _wcAgg(cardSrc, 'last_week_active');
+  const twQc = _wcWtQc(cardSrc, 'this_week_qc_rate', 'this_week_h');
+  const lwQc = _wcWtQc(cardSrc, 'last_week_qc_rate', 'last_week_h');
+  const twDays = this_week.days, lwDays = last_week.days;
+
+  // 质检人效 = 日均采集人效（后端按天算、>10条过滤）× 质检通过率
+  const _wcEff = (dailyCollectEff, qcRate) => {
+    if (dailyCollectEff == null) return null;
+    const rate = (qcRate != null && qcRate > 0) ? qcRate : 1;
+    return Math.round(dailyCollectEff * rate * 10) / 10;
+  };
+  // 汇总卡片：加权平均日均采集人效（按各供应商本周时长加权）
+  const _wcWeightedDCE = (src, dceKey, hKey) => {
+    const validSrc = src.filter(v => v[dceKey] != null);
+    const totalH = validSrc.reduce((s, v) => s + (v[hKey] || 0), 0);
+    if (!totalH) return null;
+    return validSrc.reduce((s, v) => s + v[dceKey] * (v[hKey] || 0), 0) / totalH;
+  };
+  const twDCE = _wcWeightedDCE(cardSrc, 'tw_daily_collect_eff', 'this_week_h');
+  const lwDCE = _wcWeightedDCE(cardSrc, 'lw_daily_collect_eff', 'last_week_h');
+  const twEff = _wcEff(twDCE, twQc);
+  const lwEff = _wcEff(lwDCE, lwQc);
+
+  const cards = [
+    { label: '日均采集时长',
+      tw: Math.round(twH / twDays * 10) / 10 + 'h',
+      lw: Math.round(lwH / lwDays * 10) / 10 + 'h',
+      ch: _wcPctChange(lwH / lwDays, twH / twDays) },
+    { label: '累计采集时长',
+      tw: Math.round(twH * 10) / 10 + 'h',
+      lw: Math.round(lwH * 10) / 10 + 'h',
+      ch: _wcPctChange(lwH, twH) },
+    { label: '活跃采集员',
+      tw: twAc + ' 人', lw: lwAc + ' 人',
+      ch: _wcPctChange(lwAc, twAc) },
+    { label: '质检通过率',
+      tw: _wcFmtPct(twQc), lw: _wcFmtPct(lwQc),
+      ch: _wcPpChange(lwQc, twQc) },
+    { label: '采集人效',
+      tw: twEff != null ? twEff + ' h/人·天' : '—',
+      lw: lwEff != null ? lwEff + ' h/人·天' : '—',
+      ch: _wcPctChange(lwEff || 0, twEff || 0) },
+  ];
+
+  const wcCardAccents = ['#6366f1','#0ea5e9','#a855f7','#10b981','#f59e0b'];
+  document.getElementById('wcOverallCards').innerHTML =
+    `<div style="width:100%;margin-bottom:6px;font-size:12px;color:#475569">${cardLabel}</div>` +
+    cards.map((c, i) => {
+      const accent  = wcCardAccents[i % wcCardAccents.length];
+      const chColor = c.ch.startsWith('+') ? '#4ade80' : c.ch.startsWith('-') ? '#f87171' : '#94a3b8';
+      return `
+      <div style="
+        position:relative;overflow:hidden;background:#0f172a;
+        border-radius:14px;padding:20px 22px 18px;min-width:160px;flex:1;
+        border:1px solid rgba(255,255,255,.07);
+        box-shadow:0 0 0 1px rgba(255,255,255,.03),0 4px 20px rgba(0,0,0,.4)">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${accent}"></div>
+        <div style="font-size:11px;color:#475569;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px">${c.label}</div>
+        <div style="font-size:30px;font-weight:800;color:#f1f5f9;letter-spacing:-.5px;line-height:1">${c.tw}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+          <span style="font-size:12px;color:#334155">上周 ${c.lw}</span>
+          <span style="font-size:13px;font-weight:700;color:${chColor}">${c.ch}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+  // 关注的置顶，其余按本周时长排
+  const sortedVendors = [
+    ...vendors.filter(v => watched.includes(v.name)),
+    ...vendors.filter(v => !watched.includes(v.name)),
+  ];
+
+  const rows = sortedVendors.map(v => {
+    const isWatched = watched.includes(v.name);
+    const hCh  = _wcPctChange(v.last_week_h, v.this_week_h);
+    const qcCh = _wcPpChange(v.last_week_qc_rate, v.this_week_qc_rate);
+    const rowBg = isWatched ? 'background:rgba(99,102,241,.08)' : '';
+
+    // 质检人效 = 日均采集人效（后端已过滤 ≤10条）× 质检率
+    const vLwEff = _wcEff(v.lw_daily_collect_eff, v.last_week_qc_rate);
+    const vTwEff = _wcEff(v.tw_daily_collect_eff, v.this_week_qc_rate);
+    const effCh  = _wcPctChange(vLwEff || 0, vTwEff || 0);
+    const effTwText = vTwEff != null ? vTwEff + '' : '—';
+    const effLwText = vLwEff != null ? vLwEff + '' : '—';
+
+    return `
+      <tr style="border-top:1px solid #1e293b;${rowBg}">
+        <td style="padding:10px 14px">
+          <span onclick="_wcToggleRow('${v.name.replace(/'/g,"\\'")}',this)"
+                style="cursor:pointer;margin-right:8px;font-size:15px;user-select:none"
+                title="${isWatched ? '取消关注' : '关注'}">${isWatched ? '★' : '☆'}</span>
+          <span style="color:#e2e8f0;font-weight:${isWatched ? '600' : '400'}">${v.name}</span>
+        </td>
+        <td style="padding:10px 14px;color:#94a3b8;text-align:right">${v.last_week_h}h</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right;font-weight:600">${v.this_week_h}h</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(hCh)}">${hCh}</td>
+        <td style="padding:10px 14px;color:#94a3b8;text-align:right">${_wcFmtPct(v.last_week_qc_rate)}</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right">${_wcFmtPct(v.this_week_qc_rate)}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(qcCh)}">${qcCh}</td>
+        <td style="padding:10px 14px;color:#64748b;text-align:right">${effLwText}</td>
+        <td style="padding:10px 14px;color:#e2e8f0;text-align:right">${effTwText}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;${_wcColor(effCh)}">${effCh}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('wcVendorTable').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;
+                  overflow:hidden;border:1px solid #334155">
+      <thead>
+        <tr style="background:#0f172a">
+          <th style="padding:10px 14px;text-align:left;color:#64748b;font-weight:500;font-size:13px">供应商</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">上周时长</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">本周时长</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">变化</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">上周质检率</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">本周质检率</th>
+          <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:500;font-size:13px">质检变化</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">上周采集人效</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">本周采集人效</th>
+          <th style="padding:10px 14px;text-align:right;color:#f59e0b;font-weight:500;font-size:13px">人效变化</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // 保存 vendors 数据供 toggle 用
+  window._wcLastData = data;
+}
+
+function _wcToggleRow(name, starEl) {
+  const w = JSON.parse(localStorage.getItem('wcWatchVendors') || '[]');
+  const i = w.indexOf(name);
+  if (i === -1) w.push(name); else w.splice(i, 1);
+  localStorage.setItem('wcWatchVendors', JSON.stringify(w));
+  // 重新渲染（用缓存数据，不重新请求）
+  if (window._wcLastData) _renderWeekCompare(window._wcLastData);
+}
+
+// ── Page switching ────────────────────────
+function switchPage(page) {
+  document.getElementById('pageCollectors').style.display = page === 'collectors' ? '' : 'none';
+  document.getElementById('pageDelivery').style.display    = page === 'delivery'    ? '' : 'none';
+  document.getElementById('pageWeekCompare').style.display = page === 'weekcompare' ? '' : 'none';
+  document.querySelectorAll('.nav-item[data-page]').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page));
+  if (page === 'delivery') {
+    loadDeliveryData();
+  }
+  if (page === 'weekcompare') {
+    if (!document.getElementById('wcWeek').value) {
+      document.getElementById('wcWeek').value = _getCurrentISOWeek();
+    }
+    loadWeekCompare();
+  }
+  if (page === 'collectors') {
+    if (!document.getElementById('collDate').value) {
+      document.getElementById('collDate').value = new Date().toISOString().slice(0,10);
+    }
+    loadCollectors(true);  // 页面打开：用缓存快速显示
+  }
+}
+
+
+
+// ══════════════════════════════════════════════════════════════
+//  排期状态（必须在 init 块之前声明，避免 TDZ 错误）
+// ══════════════════════════════════════════════════════════════
+const schedState = {
+  schedules:    [],
+  current:      null,
+  currentVer:   null,
+  selectedProjs: [],
+  projSearchTimer: null,
+  collectEff:   1.5,    // 采集人效 h/人/天（全局，不分供应商）
+  vendors:      [],     // 已选供应商列表 [{name}]
+  allVendors:   [],     // 从数据库拉取的全量供应商名称列表
+};
+
+// ── Init ─────────────────────────────────
+onConfigChange();
+renderAll();
+if (!state.schedule.length) fillDays();
+switchPage('collectors');
+setCollVendorFilter(_collVendorFilter);
+
+// 采集详情：每小时自动刷新当天数据
+setInterval(() => {
+  const d = document.getElementById('collDate').value;
+  const today = new Date().toISOString().slice(0, 10);
+  if (d === today) loadCollectors();
+}, 3600 * 1000);
+
+
+// ══════════════════════════════════════════════════════════════
+//  排期管理（合并版）
+// ══════════════════════════════════════════════════════════════
+
+// ── 供应商配置 ───────────────────────────────────────────────
+function schedRenderVendors() {
+  const el = document.getElementById('vendorConfigList');
+  if (!el) return;
+  const effRow = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(99,102,241,.15)">
+      <span style="font-size:13px;color:#94a3b8">采集人效</span>
+      <input class="input" type="number" value="${schedState.collectEff}" min="0.1" step="0.1"
+        style="width:64px;height:28px;font-size:13px;text-align:center"
+        oninput="schedState.collectEff=parseFloat(this.value)||1.5;renderScheduleTable()">
+      <span style="font-size:12px;color:#64748b">h / 人 / 天</span>
+    </div>`;
+  const chips = schedState.allVendors.length
+    ? schedState.allVendors.map(name => {
+        const checked = schedState.vendors.some(v => v.name === name);
+        return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 10px;border-radius:20px;background:${checked?'rgba(99,102,241,.25)':'rgba(255,255,255,.04)'};border:1px solid ${checked?'rgba(99,102,241,.5)':'rgba(255,255,255,.08)'};font-size:12px;white-space:nowrap">
+          <input type="checkbox" ${checked?'checked':''} style="accent-color:#6366f1" onchange="schedToggleVendor('${name.replace(/'/g,"\\'")}',this.checked)">
+          ${name}
+        </label>`;
+      }).join('')
+    : '<span style="font-size:12px;color:#64748b">加载中...</span>';
+  el.innerHTML = effRow + `<div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>`;
+  schedRebuildTableHead();
+}
+
+function schedToggleVendor(name, checked) {
+  if (checked) {
+    if (!schedState.vendors.some(v => v.name === name)) {
+      schedState.vendors.push({ name });
+      state.schedule.forEach(d => {
+        if (!d.vendor_people) d.vendor_people = [];
+        d.vendor_people.push(0);
+      });
+    }
+  } else {
+    const idx = schedState.vendors.findIndex(v => v.name === name);
+    if (idx >= 0) {
+      schedState.vendors.splice(idx, 1);
+      state.schedule.forEach(d => { if (d.vendor_people) d.vendor_people.splice(idx, 1); });
+    }
+  }
+  schedRenderVendors();
+  renderScheduleTable();
+}
+
+function schedRebuildTableHead() {
+  const thead = document.getElementById('schedThead');
+  if (!thead) return;
+  const vendorCols = schedState.vendors.map(v =>
+    `<th class="num" style="color:#38bdf8">${v.name}<br><span style="font-size:10px;color:#475569">人力</span></th>`
+  ).join('');
+  thead.innerHTML = `<tr>
+    <th>日期</th>
+    ${vendorCols}
+    <th class="num" style="color:#38bdf8">每日采集(h)</th>
+    <th class="num" style="color:#34d399">累计采集(h)</th>
+    <th class="num" style="color:#a78bfa">计划标注(h)</th>
+    <th class="num" style="color:#f59e0b">标注完成(h)</th>
+    <th class="num" style="color:#f59e0b">累计标注(h)</th>
+    <th class="num" style="color:#ec4899">打包完成(h)</th>
+    <th class="num" style="color:#ec4899">累计打包(h)</th>
+    <th>状态</th>
+    <th style="width:40px"></th>
+  </tr>`;
+}
+
+// 计算某行的合计采集h = Σ人力 × 全局人效
+function schedCalcCollect(row) {
+  const vp = row.vendor_people || [];
+  const total = vp.reduce((s, n) => s + (parseFloat(n) || 0), 0);
+  return total * (schedState.collectEff || 1.5);
+}
+
+// ── Tab 切换 ────────────────────────────────────────────────
+function schedSwitchTab(tab) {
+  ['plan','actual','stock'].forEach(t => {
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).style.display = t === tab ? '' : 'none';
+    const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (t === tab) {
+      btn.className = 'btn btn-sm';
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+    } else {
+      btn.className = 'btn btn-default btn-sm';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.border = '';
+    }
+  });
+}
+
+// ── 流水线配置折叠 ──────────────────────────────────────────
+function togglePipeline() {
+  const body = document.getElementById('pipelineBody');
+  const icon = document.getElementById('pipelineToggleIcon');
+  const open = body.style.display === '';
+  body.style.display = open ? 'none' : '';
+  icon.textContent   = open ? '▼ 展开' : '▲ 收起';
+}
+
+// ── 初始化排期页 ────────────────────────────────────────────
+async function schedInitPage() {
+  await schedLoadAllVendors();
+  await schedRefreshList();
+}
+
+async function schedLoadAllVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    schedState.allVendors = await res.json();
+  } catch(e) {
+    schedState.allVendors = [];
+  }
+  schedRenderVendors();
+}
+
+async function schedRefreshList() {
+  const res = await fetch('/api/schedules');
+  schedState.schedules = await res.json();
+  const sel = document.getElementById('schedSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— 选择已保存排期 —</option>' +
+    schedState.schedules.map(s => `<option value="${s.id}">${s.name}（目标${s.target_h}h）</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+// ── 加载排期 ────────────────────────────────────────────────
+async function schedLoad(id) {
+  if (!id) {
+    schedState.current = null;
+    schedState.currentVer = null;
+    schedState.selectedProjs = [];
+    document.getElementById('schedVerSelect').style.display = 'none';
+    document.getElementById('schedDeleteBtn').style.display = 'none';
+    document.getElementById('schedSavedAt').textContent = '';
+    renderTags(); updateCount();
+    return;
+  }
+  const res = await fetch('/api/schedules/' + id);
+  const s   = await res.json();
+  schedState.current = s;
+  const ver = s.versions.find(v => v.v === s.current_version);
+  schedApplyVersion(s, ver);
+}
+
+function schedApplyVersion(s, ver) {
+  schedState.currentVer = ver;
+  document.getElementById('schedDeleteBtn').style.display = '';
+  document.getElementById('schedSavedAt').textContent = '上次保存：' + ver.saved_at.slice(0,16);
+
+  // 恢复交付项目名称
+  document.getElementById('deliveryProject').value = s.delivery_project || '';
+
+  // 恢复供应商配置
+  const params = ver.params || {};
+  if (params.collectEff) schedState.collectEff = params.collectEff;
+  if (params.vendors && params.vendors.length) {
+    schedState.vendors = params.vendors.map(v => ({ name: v.name }));
+  } else {
+    schedState.vendors = [];
+  }
+  schedRenderVendors();
+
+  // 关联项目
+  schedState.selectedProjs = (s.project_ids||[]).map((id,i) => ({id, name:(s.project_names||[])[i]||id}));
+  state.selectedProjects = schedState.selectedProjs.map(p => ({id:p.id, name:p.name}));
+  renderTags(); updateCount();
+
+  // 每日排期
+  state.schedule = (ver.days||[]).map(d => ({
+    date:           d.date,
+    planned:        d.plan_collect_h || 0,  // 兼容旧数据
+    plan_label_h:   d.plan_label_h   || 0,
+    vendor_people:  d.vendor_people  || schedState.vendors.map(() => 0),
+  }));
+
+  if (ver.target_h)   setVal('hTarget',   ver.target_h);
+  if (ver.start_date) setVal('hDeadline',  ver.start_date);
+
+  renderAll();
+  saveState();
+}
+
+function schedLoadVersion(v) {
+  const s = schedState.current;
+  if (!s) return;
+  const ver = s.versions.find(x => x.v === parseInt(v));
+  if (ver) schedApplyVersion(s, ver);
+}
+
+// ── 新建 ────────────────────────────────────────────────────
+function schedNew() {
+  schedState.current = null;
+  schedState.currentVer = null;
+  // 继承上次关联的项目（取最近一个排期的项目）
+  const lastSched = schedState.schedules[0];
+  const inheritProjs = lastSched
+    ? (lastSched.project_ids||[]).map((id,i) => ({id, name:(lastSched.project_names||[])[i]||id}))
+    : [];
+  schedState.selectedProjs = inheritProjs;
+  schedState.vendors = [];
+  schedState.collectEff = 1.5;
+  document.getElementById('deliveryProject').value = '';
+  document.getElementById('schedSelect').value = '';
+  document.getElementById('schedDeleteBtn').style.display = 'none';
+  document.getElementById('schedSavedAt').textContent = '';
+  state.selectedProjects = inheritProjs.map(p => ({id:p.id, name:p.name}));
+  state.schedule = [];
+  schedRenderVendors();
+  renderTags(); updateCount(); renderScheduleTable();
+}
+
+// ── 保存 ────────────────────────────────────────────────────
+async function schedSave() {
+  const name    = prompt('排期名称', schedState.current ? schedState.current.name : '新排期');
+  if (!name) return;
+  const deliveryProject = document.getElementById('deliveryProject').value.trim();
+  if (!deliveryProject) { alert('请填写交付项目名称'); return; }
+  const target  = parseFloat(document.getElementById('hTarget').value) || 0;
+  const deadline= document.getElementById('hDeadline').value;
+
+  const cfg = getConfig();
+  cfg.collectEff = schedState.collectEff;
+  cfg.vendors = schedState.vendors.map(v => ({ name: v.name }));
+
+  const body = {
+    name,
+    delivery_project: deliveryProject,
+    target_h:      target,
+    start_date:    deadline,
+    project_ids:   state.selectedProjects.map(p => p.id),
+    project_names: state.selectedProjects.map(p => p.name),
+    params: cfg,
+    days: state.schedule.map(d => ({
+      date:           d.date,
+      plan_collect_h: schedCalcCollect(d),
+      plan_label_h:   d.plan_label_h   || 0,
+      vendor_people:  d.vendor_people  || schedState.vendors.map(() => 0),
+    })),
+  };
+
+  let res, saved;
+  if (schedState.current) {
+    res   = await fetch('/api/schedules/' + schedState.current.id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    saved = await res.json();
+  } else {
+    res   = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    saved = await res.json();
+  }
+  schedState.current = saved;
+  await schedRefreshList();
+  document.getElementById('schedSelect').value = saved.id;
+  const ver = saved.versions.find(v => v.v === saved.current_version);
+  schedApplyVersion(saved, ver);
+  alert('已保存');
+}
+
+// ── 删除 ────────────────────────────────────────────────────
+async function schedDelete() {
+  const s = schedState.current;
+  if (!s || !confirm('确认删除排期「' + s.name + '」？')) return;
+  await fetch('/api/schedules/' + s.id, {method:'DELETE'});
+  schedNew();
+  await schedRefreshList();
+}
+
+// ── 快速填充（直接填 h） ─────────────────────────────────────
+function schedFillAll() {
+  const l = parseFloat(document.getElementById('fillLabelH').value) || 0;
+  state.schedule.forEach(d => {
+    if (!d.vendor_people) d.vendor_people = schedState.vendors.map(() => 0);
+    d.plan_label_h = l;
+  });
+  renderScheduleTable(); saveState();
+}
+function schedFillEmpty() {
+  const l = parseFloat(document.getElementById('fillLabelH').value) || 0;
+  state.schedule.forEach(d => {
+    if (!d.vendor_people) d.vendor_people = schedState.vendors.map(() => 0);
+    if (!d.plan_label_h)  d.plan_label_h  = l;
+  });
+  renderScheduleTable(); saveState();
+}
+function schedFillDays() { fillDays(); }
+
+// ── 计划 vs 实际 ─────────────────────────────────────────────
+async function schedLoadActual() {
+  const s = schedState.current;
+  if (!s) { alert('请先保存排期'); return; }
+  const projIds = (s.project_ids && s.project_ids.length)
+    ? s.project_ids
+    : state.selectedProjects.map(p => p.id);
+  if (!projIds.length) { alert('请先关联采集项目后保存排期'); return; }
+  const res  = await fetch('/api/schedules/' + s.id + '/compare?project_ids=' + projIds.join(','));
+  const data = await res.json();
+  schedRenderActual(data);
+}
+
+function schedRenderActual(d) {
+  const today = new Date().toISOString().slice(0,10);
+  const fmtDiff = v => v > 0
+    ? `<span style="color:#4ade80">+${v.toFixed(1)}</span>`
+    : v < 0 ? `<span style="color:#f87171">${v.toFixed(1)}</span>`
+    : `<span style="color:#64748b">0</span>`;
+
+  // 计算截止今天的累计计划（后端直接返回）
+  const cumPlanCollect = d.cum_plan_collect_to_today || 0;
+  const cumPlanLabel   = d.cum_plan_label_to_today   || 0;
+  const cumActCollect  = d.cum_act_collect  || 0;
+  const cumActLabel    = d.cum_act_label    || 0;
+
+  // 计算达标率
+  const collectRate = cumPlanCollect > 0 ? (cumActCollect / cumPlanCollect * 100) : 0;
+  const labelRate = cumPlanLabel > 0 ? (cumActLabel / cumPlanLabel * 100) : 0;
+  const packRate = cumPlanLabel > 0 ? (d.cum_act_packed || 0) / cumPlanLabel * 100 : 0;
+
+  const collectDiff = cumActCollect - cumPlanCollect;
+  const labelDiff = cumActLabel - cumPlanLabel;
+  const packDiff = (d.cum_act_packed || 0) - cumPlanLabel;
+
+  // 剩余缺口和后续排期
+  const target = d.target_h || 0;
+  const stockDel = d.stock_deliverable || 0;
+  const futureDel = d.future_deliverable || 0;
+  const remainGap = target - stockDel - futureDel;
+  const gapPercent = target > 0 ? (remainGap / target * 100) : 0;
+
+  // 截止日倒计时
+  const deadline = schedState.currentVer?.start_date || '';
+  const daysLeft = deadline ? Math.ceil((new Date(deadline) - new Date(today)) / 86400000) : 0;
+
+  // 渲染周报指标
+  const rateColor = r => r >= 90 ? '#4ade80' : r >= 70 ? '#fbbf24' : '#f87171';
+  const diffText = (diff, unit='h') => diff >= 0
+    ? `<span style="color:#4ade80">领先 +${diff.toFixed(1)}${unit}</span>`
+    : `<span style="color:#f87171">落后 ${diff.toFixed(1)}${unit}</span>`;
+
+  const el = (id, html) => { const e = document.getElementById(id); if(e) e.innerHTML = html; };
+
+  el('collectRate',  `<span style="color:${rateColor(collectRate)}">${cumPlanCollect>0 ? collectRate.toFixed(1)+'%' : '暂无计划'}</span>`);
+  el('collectDiff',  cumPlanCollect>0 ? `计划 ${cumPlanCollect.toFixed(1)}h｜实际 ${cumActCollect.toFixed(1)}h<br>${diffText(collectDiff)}` : '请在排期计划中配置供应商人力');
+
+  el('labelRate',    `<span style="color:${rateColor(labelRate)}">${cumPlanLabel>0 ? labelRate.toFixed(1)+'%' : '暂无计划'}</span>`);
+  el('labelDiff',    cumPlanLabel>0 ? `计划 ${cumPlanLabel.toFixed(1)}h｜实际 ${cumActLabel.toFixed(1)}h<br>${diffText(labelDiff)}` : '请在排期计划中填写计划标注');
+
+  el('packRate',     `<span style="color:${rateColor(packRate)}">${cumPlanLabel>0 ? packRate.toFixed(1)+'%' : '—'}</span>`);
+  el('packDiff',     cumPlanLabel>0 ? `预期 ${(cumPlanLabel*(d.pack_rate||0.9)).toFixed(1)}h｜实际 ${(d.cum_act_packed||0).toFixed(1)}h<br>${diffText(packDiff)}` : '—');
+
+  const gapColor = remainGap <= 0 ? '#4ade80' : remainGap < target * 0.1 ? '#fbbf24' : '#f87171';
+  el('remainGap',    `<span style="color:${gapColor}">${remainGap <= 0 ? '✓ 已满足' : '-'+remainGap.toFixed(1)+'h'}</span>`);
+  el('gapPercent',   `目标 ${target.toFixed(0)}h｜${remainGap>0 ? '缺口 '+gapPercent.toFixed(1)+'%' : '已覆盖目标'}`);
+
+  const futureColor = futureDel + stockDel >= target ? '#4ade80' : '#fbbf24';
+  el('futureDeliver', `<span style="color:${futureColor}">${futureDel.toFixed(1)}h</span>`);
+  el('futureNote',    `存量 ${stockDel.toFixed(1)}h｜合计 ${(futureDel+stockDel).toFixed(1)}h`);
+
+  const dlColor = daysLeft > 14 ? '#4ade80' : daysLeft > 7 ? '#fbbf24' : '#f87171';
+  el('daysLeft',     `<span style="color:${dlColor}">${daysLeft > 0 ? daysLeft+'天' : daysLeft === 0 ? '今日截止' : '已超期'}</span>`);
+  el('deadlineDate', `截止 ${deadline || '未设置'}`);
+
+  // 明细表
+  document.getElementById('actualBody').innerHTML = d.rows.map(r => {
+    const isPast = r.date <= today;
+    return `<tr style="${!isPast?'opacity:.4':''}">
+      <td>${r.date.slice(5).replace('-','/')}</td>
+      <td class="num">${isPast ? r.actual_collect.toFixed(1) : '—'}</td>
+      <td class="num">${isPast ? r.cum_act_collect.toFixed(1) : '—'}</td>
+      <td class="num">${r.plan_label.toFixed(1)}</td>
+      <td class="num">${isPast ? r.actual_label.toFixed(1) : '—'}</td>
+      <td class="num">${isPast ? r.actual_packed.toFixed(1) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── 覆盖 renderScheduleTable：供应商人力列版本 ──────────────
+function renderScheduleTable() {
+  const tbody = document.getElementById('schedBody');
+  if (!tbody) return;
+  const nv = schedState.vendors.length;
+  const colspan = 3 + nv + 5; // 日期+供应商列+每日采集+累计采集+标注+标注完+打包+状态+删
+  if (!state.schedule.length) {
+    tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:24px;color:var(--text-muted)">暂无排期行，请填充至截止日或手动添加</td></tr>`;
+    renderSummary();
+    return;
+  }
+  schedRebuildTableHead();
+
+  const c = getConfig();
+  const qc_rate = c.qc_rate / 100;
+  const pack_rate = c.pack_rate / 100;
+  let cumCollect = 0;
+  let cumLabel = 0;
+  let cumPack = 0;
+
+  tbody.innerHTML = state.schedule.map((row, i) => {
+    if (!row.vendor_people) row.vendor_people = schedState.vendors.map(() => 0);
+    while (row.vendor_people.length < nv) row.vendor_people.push(0);
+
+    const totalCollect = schedCalcCollect(row);
+    row.planned = totalCollect;
+    const r = computeRow(row);
+    const planLabel = row.plan_label_h || 0;
+
+    // 每日采集 = totalCollect × qc_rate
+    const dailyCollect = totalCollect * qc_rate;
+    cumCollect += dailyCollect;
+
+    // 累计标注和打包
+    cumLabel += planLabel;
+    const dailyPack = planLabel * pack_rate;
+    cumPack += dailyPack;
+
+    const badge = row.planned > 0
+      ? (r.ok ? '<span class="badge badge-green">有效</span>' : '<span class="badge badge-red">超期</span>')
+      : '';
+
+    const vendorCols = schedState.vendors.map((v, vi) => `
+      <td class="num">
+        <input class="input" type="number" value="${row.vendor_people[vi] || 0}" min="0" step="1"
+          style="width:60px;height:26px;font-size:12px;text-align:right"
+          oninput="state.schedule[${i}].vendor_people[${vi}]=parseFloat(this.value)||0;
+                   state.schedule[${i}].planned=schedCalcCollect(state.schedule[${i}]);
+                   renderScheduleTable();saveState()">
+      </td>`).join('');
+
+    return `<tr>
+      <td style="white-space:nowrap">${row.date}</td>
+      ${vendorCols}
+      <td class="num" style="color:#38bdf8;font-weight:600">${dailyCollect.toFixed(1)}</td>
+      <td class="num" style="color:#34d399;font-weight:600">${cumCollect.toFixed(1)}</td>
+      <td class="num">
+        <input class="input" type="number" value="${planLabel}" min="0" step="0.5"
+          style="width:60px;height:26px;font-size:12px;text-align:right;color:#a78bfa"
+          oninput="state.schedule[${i}].plan_label_h=parseFloat(this.value)||0;renderScheduleTable();saveState()">
+      </td>
+      <td class="num">${planLabel > 0 ? planLabel.toFixed(1) : '—'}</td>
+      <td class="num" style="color:#f59e0b;font-weight:600">${planLabel > 0 ? cumLabel.toFixed(1) : '—'}</td>
+      <td class="num">${planLabel > 0 ? dailyPack.toFixed(1) : '—'}</td>
+      <td class="num" style="color:#ec4899;font-weight:600">${planLabel > 0 ? cumPack.toFixed(1) : '—'}</td>
+      <td>${badge}</td>
+      <td><button class="btn-icon-only" onclick="removeRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+  renderSummary();
+}
+
+// ── 供应商导出/导入 ─────────────────────────────────────────
+function schedExportVendors() {
+  const json = JSON.stringify(schedState.vendors, null, 2);
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = 'vendors.json';
+  a.click();
+}
+
+function schedImportVendors() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const vendors = JSON.parse(ev.target.result);
+        if (!Array.isArray(vendors)) throw new Error('格式错误');
+        schedState.vendors = vendors.map(v => ({ name: String(v.name||''), eff: parseFloat(v.eff)||1.5 }));
+        schedRenderVendors();
+        renderScheduleTable();
+      } catch(err) {
+        alert('导入失败：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  交付进度
+// ══════════════════════════════════════════════════════════════
+
+
+
+async function loadDeliveryData() {
+  try {
+    const res = await fetch('/api/delivery/data');
+    if (res.status === 401) { window.location.href = '/'; return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    _deliveryData = json.projects || {};
+    const refreshing = json.refreshing;
+    renderDeliveryCards();
+    updateDeliveryRefreshingTip(refreshing);
+
+    // 如果所有项目都没有数据，说明还在初次加载
+    const hasAny = Object.values(_deliveryData).some(p => p.data);
+    if (!hasAny || refreshing) {
+      if (!_deliveryPollTimer) {
+        _deliveryPollTimer = setInterval(() => {
+          fetch('/api/delivery/data').then(r => r.json()).then(j => {
+            _deliveryData = j.projects || {};
+            renderDeliveryCards();
+            updateDeliveryRefreshingTip(j.refreshing);
+            if (!j.refreshing && Object.values(_deliveryData).some(p => p.data)) {
+              clearInterval(_deliveryPollTimer);
+              _deliveryPollTimer = null;
+            }
+          });
+        }, 30000);
+      }
+    }
+  } catch(e) {
+    document.getElementById('deliveryEmpty').style.display = '';
+    document.getElementById('deliveryEmpty').querySelector('div:last-child').textContent = '加载失败: ' + e.message;
+    document.getElementById('deliveryCards').innerHTML = '';
+  }
+}
+
+function updateDeliveryRefreshingTip(refreshing) {
+  document.getElementById('deliveryRefreshingTip').style.display = refreshing ? '' : 'none';
+  document.getElementById('deliveryRefreshBtn').disabled = refreshing;
+}
+
+function _dedupDesc(cfg) {
+  if (!cfg.dedup_by_producer_scene) return null;
+  const mode = cfg.dedup_mode === 'task' ? '同 task 去重' : '同 task + 采集员去重';
+  const cap = cfg.dedup_task_cap_hours != null ? `，单条 task 上限 ${cfg.dedup_task_cap_hours}h` : '';
+  return mode + cap;
+}
+
+function renderDeliveryCards() {
+  const container = document.getElementById('deliveryCards');
+  const empty = document.getElementById('deliveryEmpty');
+  const entries = Object.entries(_deliveryData);
+  if (!entries.length) { empty.style.display = ''; container.innerHTML = ''; return; }
+
+  const hasData = entries.some(([,p]) => p.data);
+  if (!hasData) {
+    empty.style.display = '';
+    container.innerHTML = '';
+    document.getElementById('deliveryUpdatedAt').textContent = '首次加载中，约需 10 分钟…';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const useDedup = document.getElementById('deliveryDedupToggle')?.checked;
+
+  // 找最早更新时间
+  const times = entries.map(([,p]) => p.updated_at).filter(Boolean);
+  if (times.length) document.getElementById('deliveryUpdatedAt').textContent = '更新于 ' + times[0];
+
+  container.innerHTML = entries.map(([name, proj]) => {
+    const cfg = proj.config || {};
+    const data = proj.data;
+    if (!data) return `
+      <div class="dv-card" onclick="expandDelivery('${name}')">
+        <div class="dv-card-name">${cfg.display_name || name}</div>
+        <div style="color:#64748b;font-size:12px;margin-top:8px">数据加载中…</div>
+      </div>`;
+
+    const knownData = data.projects?.[name]?.known || {};
+    const hasDedup = !!(knownData.packed_dedup);
+
+    // 原始数据
+    const sumH = obj => Object.values(obj || {}).reduce((s, v) => s + (v.hours || 0), 0);
+    const qcH    = sumH(knownData.qc_pass);
+    const labH   = sumH(knownData.lab_done);
+    const packedH = sumH(knownData.packed);
+    const diH    = cfg.show_deliver_inspect ? sumH(knownData.deliver_inspect) : null;
+
+    // 去重数据
+    const qcDH   = hasDedup ? sumH(knownData.qc_pass_dedup)  : null;
+    const labDH  = hasDedup ? sumH(knownData.lab_done_dedup) : null;
+    const pkDH   = hasDedup ? sumH(knownData.packed_dedup)   : null;
+    const diDH   = (hasDedup && cfg.show_deliver_inspect && knownData.deliver_inspect_dedup)
+                   ? sumH(knownData.deliver_inspect_dedup) : null;
+
+    // 进度条用打包（去重优先）
+    const packedForBar = pkDH !== null ? pkDH : packedH;
+    const targetH = cfg.base_total_hours || 0;
+    const pct = targetH > 0 ? Math.min(100, packedForBar / targetH * 100) : null;
+
+    // 去重规则 tooltip
+    const dedupDesc = _dedupDesc(cfg);
+
+    // 交付日期剩余天数
+    const delivDate = cfg.delivery_date && cfg.delivery_date !== '待定' ? cfg.delivery_date : null;
+    let daysLeft = null, daysColor = '#94a3b8';
+    if (delivDate) {
+      daysLeft = Math.ceil((new Date(delivDate) - new Date()) / 86400000);
+      daysColor = daysLeft <= 3 ? '#ef4444' : daysLeft <= 7 ? '#f59e0b' : '#34d399';
+    }
+
+    const progressBar = pct !== null ? `
+      <div style="margin:10px 0 4px;background:#0f172a;border-radius:4px;height:6px;overflow:hidden">
+        <div style="width:${pct.toFixed(1)}%;height:100%;background:${pct>=80?'#34d399':pct>=50?'#f59e0b':'#3b82f6'};border-radius:4px"></div>
+      </div>
+      <div style="font-size:11px;color:#94a3b8">${packedForBar.toFixed(1)}h / ${targetH}h（${pct.toFixed(1)}%）${hasDedup ? '<span style="color:#818cf8;margin-left:4px" title="'+dedupDesc+'">去重</span>' : ''}</div>
+    ` : `<div style="font-size:11px;color:#64748b;margin-top:6px">无目标时长</div>`;
+
+    // 每个指标列：原始值在上，去重值在下（有分隔线），dedupH=null 则只显示一行
+    const mkCell = (rawH, dedupH, color, label) => {
+      if (dedupH !== null) {
+        return `<div style="text-align:center;flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;color:${color}">${rawH.toFixed(0)}h</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">${label}</div>
+            <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(99,102,241,.15)">
+              <div style="font-size:14px;font-weight:600;color:${color}">${dedupH.toFixed(0)}h</div>
+              <div style="font-size:10px;color:#64748b;white-space:nowrap">${label}(去重)</div>
+            </div>
+          </div>`;
+      }
+      return `<div style="text-align:center;flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;color:${color}">${rawH.toFixed(0)}h</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">${label}</div>
+          </div>`;
+    };
+
+    const diCell = diH !== null ? mkCell(diH, diDH, '#fb923c', '交付质检') : '';
+
+    return `
+      <div class="dv-card" onclick="expandDelivery('${name}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="dv-card-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${cfg.display_name || name}</div>
+          ${daysLeft !== null ? `<div style="font-size:12px;color:${daysColor};font-weight:600;white-space:nowrap;margin-left:6px">${daysLeft > 0 ? daysLeft+'天后交付' : daysLeft === 0 ? '今日交付' : '已逾期'+Math.abs(daysLeft)+'天'}</div>` : ''}
+        </div>
+        ${progressBar}
+        <div style="display:flex;gap:0;margin-top:10px;justify-content:space-between">
+          ${mkCell(qcH, qcDH, '#38bdf8', '抽检通过')}
+          ${mkCell(labH, labDH, '#a78bfa', '标注完成')}
+          ${mkCell(packedH, pkDH, '#34d399', '打包成功')}
+          ${diCell}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function expandDelivery(name) {
+  const proj = _deliveryData[name];
+  if (!proj || !proj.data) return;
+  const cfg = proj.config || {};
+  const knownData = proj.data.projects?.[name]?.known || {};
+  const unknown = proj.data.projects?.[name]?.unknown || {};
+  const scenes = cfg.scenes || [];
+  const sceneNames = scenes.map(s => s.name);
+  const useDedup = document.getElementById('deliveryDedupToggle')?.checked;
+  const hasDedup = !!(knownData.packed_dedup);
+  const pk = (useDedup && knownData.packed_dedup)   ? 'packed_dedup'   : 'packed';
+  const qk = (useDedup && knownData.qc_pass_dedup)  ? 'qc_pass_dedup'  : 'qc_pass';
+  const lk = (useDedup && knownData.lab_done_dedup) ? 'lab_done_dedup' : 'lab_done';
+
+  // 去重说明条
+  const dedupDesc = _dedupDesc(cfg);
+  const dedupInfoBar = (useDedup && hasDedup && dedupDesc)
+    ? `<div style="margin-bottom:10px;padding:6px 12px;background:rgba(99,102,241,.1);border-radius:6px;font-size:12px;color:#818cf8">去重规则：${dedupDesc}</div>`
+    : '';
+
+  // 所有已知环境
+  const allEnvs = new Set();
+  [pk,'sem_ing','sem_done','pose_ing','pose_done',lk,'qc_scene',qk].forEach(k => Object.keys(knownData[k]||{}).forEach(e => allEnvs.add(e)));
+
+  // 一、交付进度统计
+  const hc = (k, env) => {
+    const d = knownData[k]?.[env] || {};
+    const h = (d.hours || 0).toFixed(1);
+    const c = d.cnt || 0;
+    return `${h}h <span style="color:#64748b;font-size:11px">(${c}条)</span>`;
+  };
+  let progressRows = '';
+  for (const env of allEnvs) {
+    const pkH   = (knownData[pk]?.[env]?.hours || 0).toFixed(1);
+    const scene = scenes.find(s => s.name === env);
+    const targetH = scene?.target_hours || null;
+    const pct = targetH ? (parseFloat(pkH)/targetH*100).toFixed(1)+'%' : '—';
+    const tgtStr = targetH ? targetH+'h' : '—';
+    progressRows += `<tr>
+      <td>${env}</td>
+      <td>${hc(qk, env)}</td>
+      <td>${hc('pose_ing', env)}</td>
+      <td>${hc('pose_done', env)}</td>
+      <td>${hc('sem_ing', env)}</td>
+      <td>${hc('sem_done', env)}</td>
+      <td>${hc(lk, env)}</td>
+      <td>${hc(pk, env)}</td>
+      <td>${tgtStr}</td>
+      <td style="color:${parseFloat(pct)>=80?'#34d399':parseFloat(pct)>=50?'#f59e0b':'#e2e8f0'}">${pct}</td>
+    </tr>`;
+  }
+
+  // 二、质检统计
+  let qcRows = '';
+  for (const env of allEnvs) {
+    const qs = knownData.qc_scene?.[env] || {};
+    const inspH = (qs.pending_inspect_h||0).toFixed(1);
+    const sampH = (qs.pending_sampling_h||0).toFixed(1);
+    const inspCnt = qs.pending_inspect_cnt || 0;
+    const sampCnt = qs.pending_sampling_cnt || 0;
+    const pass = qs.pass || 0;
+    const fail = qs.fail || 0;
+    const passH = (qs.pass_h || 0).toFixed(1);
+    const failH = (qs.fail_h || 0).toFixed(1);
+    const total = pass + fail;
+    const rate = total > 0 ? (pass/total*100).toFixed(1)+'%' : '—';
+    qcRows += `<tr>
+      <td>${env}</td>
+      <td>${inspH}h <span style="color:#64748b;font-size:11px">(${inspCnt}条)</span></td>
+      <td>${sampH}h <span style="color:#64748b;font-size:11px">(${sampCnt}条)</span></td>
+      <td>${passH}h <span style="color:#64748b;font-size:11px">(${pass}条)</span></td>
+      <td>${failH}h <span style="color:#64748b;font-size:11px">(${fail}条)</span></td>
+      <td style="color:${parseFloat(rate)>=80?'#34d399':parseFloat(rate)>=60?'#f59e0b':'#ef4444'}">${rate}</td>
+    </tr>`;
+  }
+
+  const unknownWarn = Object.keys(unknown).length ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#1e293b;border-radius:8px;border-left:3px solid #f59e0b;font-size:12px;color:#94a3b8">
+      ⚠️ 未识别环境（未纳入统计）：${Object.entries(unknown).map(([k,v])=>`${k}(${(v.hours||0).toFixed(1)}h)`).join('、')}
+    </div>` : '';
+
+  const tblStyle = 'width:100%;border-collapse:collapse;font-size:13px;margin-top:8px';
+  const thStyle = 'padding:8px 10px;text-align:left;color:#64748b;font-weight:500;font-size:12px;background:rgba(99,102,241,.06);';
+  const tdStyle = 'padding:7px 10px;border-bottom:1px solid rgba(99,102,241,.08);color:#e2e8f0';
+
+  document.getElementById('deliveryDetailTitle').textContent = cfg.display_name || name;
+  document.getElementById('deliveryDetailContent').innerHTML = `
+    ${dedupInfoBar}
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px">一、交付进度统计</div>
+    <table style="${tblStyle}">
+      <thead><tr>
+        <th style="${thStyle}">环境</th><th style="${thStyle}">质检通过</th>
+        <th style="${thStyle}">手势标注中</th><th style="${thStyle}">手势标注完成</th>
+        <th style="${thStyle}">语义标注中</th><th style="${thStyle}">语义标注完成</th>
+        <th style="${thStyle}">标注完成</th><th style="${thStyle}">打包成功</th>
+        <th style="${thStyle}">目标</th><th style="${thStyle}">进度</th>
+      </tr></thead>
+      <tbody id="dvProgressBody">${progressRows.replace(/padding:[^;]+;/g, tdStyle.replace('padding:7px 10px;',''))}</tbody>
+    </table>
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin:18px 0 6px">二、质检统计</div>
+    <table style="${tblStyle}">
+      <thead><tr>
+        <th style="${thStyle}">环境</th><th style="${thStyle}">待质检</th><th style="${thStyle}">待抽检</th>
+        <th style="${thStyle}">质检通过</th><th style="${thStyle}">质检失败</th><th style="${thStyle}">质检通过率</th>
+      </tr></thead>
+      <tbody>${qcRows.replace(/padding:[^;]+;/g, tdStyle.replace('padding:7px 10px;',''))}</tbody>
+    </table>
+    ${unknownWarn}
+    <div style="font-size:13px;font-weight:500;color:#94a3b8;margin:18px 0 10px">三、每日趋势</div>
+    <div id="dvLabChart"></div>
+  `;
+
+  // 折线图（3条线）
+  const labDaily     = knownData.lab_done_daily     || [];
+  const collectDaily = knownData.collect_done_daily || [];
+  const qcDaily      = knownData.qc_pass_daily      || [];
+  renderLabDailyChart(collectDaily, qcDaily, labDaily);
+
+  // 重新应用 td 样式（简化处理：直接用 CSS）
+  document.getElementById('deliveryDetail').querySelectorAll('td').forEach(td => {
+    td.style.padding = '7px 10px';
+    td.style.borderBottom = '1px solid rgba(99,102,241,.08)';
+    if (!td.style.color) td.style.color = '#e2e8f0';
+  });
+
+  document.getElementById('deliveryDetail').style.display = '';
+  document.getElementById('deliveryDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function renderLabDailyChart(collectData, qcData, labData) {
+  const el = document.getElementById('dvLabChart');
+  if (!el) return;
+
+  const series = [
+    { data: collectData || [], color: '#38bdf8', label: '采集完成' },
+    { data: qcData      || [], color: '#34d399', label: '质检通过' },
+    { data: labData     || [], color: '#a78bfa', label: '标注完成' },
+  ].filter(s => s.data.length);
+
+  if (!series.length) {
+    el.innerHTML = '<div style="color:#475569;font-size:12px;padding:16px 0">暂无数据</div>';
+    return;
+  }
+
+  const allDates = [...new Set(series.flatMap(s => s.data.map(d => d.date)))].sort();
+
+  const savedRange = localStorage.getItem('dvDailyRange') || '7';
+  const range = savedRange;
+
+  const cutoff = range === 'all' ? null : (() => {
+    const d = new Date(); d.setDate(d.getDate() - (parseInt(range) - 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const visibleDates = cutoff ? allDates.filter(d => d >= cutoff) : allDates;
+
+  const thStyle = 'padding:5px 12px;font-size:11px;font-weight:500;text-align:center;border-bottom:1px solid rgba(99,102,241,.15);white-space:nowrap';
+  const tdBase  = 'padding:4px 12px;font-size:12px;text-align:center;border-bottom:1px solid rgba(99,102,241,.06);white-space:nowrap;font-variant-numeric:tabular-nums';
+
+  const headers = series.map(s =>
+    `<th style="${thStyle};color:${s.color}">${s.label}</th>
+     <th style="${thStyle};color:${s.color};opacity:.6">累计</th>`
+  ).join('');
+
+  // 预计算每个 series 的累计值（按 allDates 顺序）
+  const cumMap = series.map(({ data }) => {
+    let cum = 0;
+    const m = {};
+    allDates.forEach(date => {
+      const row = data.find(d => d.date === date);
+      if (row) cum += row.hours;
+      m[date] = cum;
+    });
+    return m;
+  });
+
+  const rows = visibleDates.map(date => {
+    const cells = series.map(({ data }, i) => {
+      const row = data.find(d => d.date === date);
+      const daily = row
+        ? `<td style="${tdBase};color:#e2e8f0">${row.hours.toFixed(1)}h <span style="color:#64748b;font-size:11px">${row.cnt}条</span></td>`
+        : `<td style="${tdBase};color:#334155">—</td>`;
+      const cum = `<td style="${tdBase};color:#64748b">${cumMap[i][date].toFixed(1)}h</td>`;
+      return daily + cum;
+    }).join('');
+    return `<tr><td style="${tdBase};color:#94a3b8;font-size:11px">${date}</td>${cells}</tr>`;
+  }).join('');
+
+  const btnStyle = (val) => `cursor:pointer;padding:2px 10px;border-radius:4px;font-size:11px;border:1px solid rgba(99,102,241,.3);
+    background:${range===val?'rgba(99,102,241,.25)':'transparent'};color:${range===val?'#c7d2fe':'#64748b'}`;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="font-size:11px;color:#475569">显示：</span>
+      ${['7','30','all'].map(v =>
+        `<button onclick="_setDvRange('${v}')" style="${btnStyle(v)}">${v==='7'?'近7天':v==='30'?'近30天':'全部'}</button>`
+      ).join('')}
+    </div>
+    <table style="width:auto;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thStyle};color:#64748b">日期</th>${headers}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // 存最新的 series 数据供切换用
+  el._collectData = collectData;
+  el._qcData = qcData;
+  el._labData = labData;
+}
+
+function _setDvRange(val) {
+  localStorage.setItem('dvDailyRange', val);
+  const el = document.getElementById('dvLabChart');
+  if (el) renderLabDailyChart(el._collectData, el._qcData, el._labData);
+}
+
+function closeDeliveryDetail() {
+  document.getElementById('deliveryDetail').style.display = 'none';
+}
+
+async function triggerDeliveryRefresh() {
+  const btn = document.getElementById('deliveryRefreshBtn');
+  btn.disabled = true;
+  await fetch('/api/delivery/refresh', {method:'POST'});
+  updateDeliveryRefreshingTip(true);
+  // 启动轮询
+  if (!_deliveryPollTimer) {
+    _deliveryPollTimer = setInterval(() => {
+      fetch('/api/delivery/data').then(r => r.json()).then(j => {
+        _deliveryData = j.projects || {};
+        renderDeliveryCards();
+        updateDeliveryRefreshingTip(j.refreshing);
+        if (!j.refreshing) {
+          clearInterval(_deliveryPollTimer);
+          _deliveryPollTimer = null;
+        }
+      });
+    }, 30000);
+  }
+}
+
+// 检查是否管理员，控制账号管理入口显示
+fetch('/api/auth/me').then(r => r.json()).then(d => {
+  if (d.admin) document.getElementById('accountsLink').style.display = 'block';
+});
+</script>
+</body>
+</html>

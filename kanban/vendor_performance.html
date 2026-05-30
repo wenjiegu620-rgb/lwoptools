@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>供应商看板</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+           background: #0b0b1e; color: #e2e8f0; padding: 20px 24px; }
+
+    .topbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 14px 20px; background: #13132d; border-radius: 10px;
+      border: 1px solid rgba(99,102,241,.2); margin-bottom: 16px;
+    }
+    .topbar-title { font-size: 15px; font-weight: 600; color: #c7d2fe; flex: 1; min-width: 100px; }
+    .topbar-label { color: #94a3b8; font-size: 13px; }
+    .date-input {
+      height: 32px; padding: 0 10px; border-radius: 6px;
+      border: 1px solid rgba(99,102,241,.35);
+      background: #0b0b1e; color: #e2e8f0; font-size: 13px; outline: none;
+    }
+    .date-input:focus { border-color: #6366f1; }
+    .btn {
+      height: 32px; padding: 0 16px; border-radius: 6px;
+      background: linear-gradient(135deg,#4f46e5,#38bdf8);
+      color: #fff; font-size: 13px; border: none; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-logout {
+      height: 32px; padding: 0 14px; border-radius: 6px;
+      background: #1e293b; color: #94a3b8; font-size: 12px;
+      border: 1px solid #334155; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center;
+    }
+    .btn-logout:hover { background: #334155; }
+    .status { font-size: 12px; color: #94a3b8; }
+
+    /* 汇总卡片 */
+    .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat {
+      background: #13132d; border: 1px solid rgba(99,102,241,.2);
+      border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden;
+    }
+    .stat::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg,#4f46e5,#38bdf8);
+    }
+    .stat-label { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+    .stat-value { font-size: 26px; font-weight: 700; color: #e2e8f0; line-height: 1; }
+    .stat-value.accent { background: linear-gradient(135deg,#818cf8,#38bdf8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .stat-sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+    /* 关注区域 */
+    .watch-card {
+      background: #13132d; border: 1px solid rgba(251,191,36,.2);
+      border-radius: 10px; overflow: hidden; margin-bottom: 14px;
+    }
+    .watch-card-header {
+      padding: 12px 20px; border-bottom: 1px solid rgba(251,191,36,.12);
+      font-size: 13px; font-weight: 600; color: #fbbf24;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .watch-empty { padding: 14px 20px; font-size: 12px; color: #475569; }
+
+    /* 人员表 */
+    .persons-card {
+      background: #13132d; border: 1px solid rgba(99,102,241,.2);
+      border-radius: 10px; overflow: hidden;
+    }
+    .persons-card-header {
+      padding: 14px 20px; border-bottom: 1px solid rgba(99,102,241,.15);
+      font-size: 14px; font-weight: 600; color: #c7d2fe;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      padding: 8px 16px; text-align: left;
+      color: #64748b; font-weight: 500; font-size: 12px;
+      background: rgba(99,102,241,.06);
+    }
+    td {
+      padding: 9px 16px; color: #cbd5e1;
+      border-top: 1px solid rgba(99,102,241,.08);
+    }
+    tr:hover td { background: rgba(99,102,241,.06); }
+    .rate-bar { display: inline-flex; align-items: center; gap: 6px; }
+    .rate-track { width: 50px; height: 4px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+    .rate-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg,#4f46e5,#38bdf8); }
+    .tag-time {
+      font-size: 11px; color: #94a3b8;
+      background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.2);
+      border-radius: 4px; padding: 1px 6px;
+    }
+    .empty { text-align: center; padding: 40px; color: #64748b; }
+
+    /* 关注按钮 */
+    .watch-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 15px; line-height: 1; padding: 0 4px;
+      color: #475569; transition: color .15s, transform .1s;
+      vertical-align: middle;
+    }
+    .watch-btn:hover { transform: scale(1.2); }
+    .watch-btn.active { color: #fbbf24; }
+
+    /* 少标签 */
+    .tag-few {
+      font-size: 10px; color: #64748b;
+      background: rgba(100,116,139,.15); border: 1px solid rgba(100,116,139,.3);
+      border-radius: 3px; padding: 1px 5px; margin-left: 5px;
+      vertical-align: middle;
+    }
+    tr.few-row td { opacity: 0.45; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="topbar-title" id="pageTitle">供应商看板</span>
+    <span class="topbar-label">日期</span>
+    <input type="date" id="collDate" class="date-input">
+    <button class="btn" onclick="loadData()">查询</button>
+    <button class="btn" style="background:#1e293b;border:1px solid #334155;color:#94a3b8" onclick="exportExcel()">导出 Excel</button>
+    <span id="collStatus" class="status"></span>
+    <a href="/vendor/logout" class="btn-logout">退出登录</a>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="watchWrap"></div>
+  <div id="personsWrap"></div>
+
+  <script>
+    document.getElementById('collDate').value = new Date().toISOString().slice(0, 10);
+
+    let _watchSet = new Set();
+    let _lastData = null;
+
+    async function loadWatchlist() {
+      try {
+        const res = await fetch('/api/vendor/watch/list');
+        if (!res.ok) return;
+        const data = await res.json();
+        _watchSet = new Set(data.producers || []);
+      } catch {}
+    }
+
+    async function toggleWatch(producer) {
+      try {
+        const res = await fetch('/api/vendor/watch/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ producer })
+        });
+        const data = await res.json();
+        _watchSet = new Set(data.producers || []);
+        if (_lastData) rerender();
+      } catch {}
+    }
+
+    // 前N天日期字符串
+    function prevDate(base, n) {
+      const d = new Date(base); d.setDate(d.getDate() - n);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // 按 producer 建索引 {producer: collect_qc_h}
+    function buildEffMap(persons) {
+      const m = {};
+      (persons || []).forEach(p => { m[p.producer] = p.collect_qc_h || 0; });
+      return m;
+    }
+
+    let _effMap1 = {}, _effMap2 = {}, _effMap3 = {}, _effMap4 = {}, _effMap5 = {};
+    let _effDates = [];  // 对应的日期标签
+
+    async function loadData() {
+      const d = document.getElementById('collDate').value;
+      if (!d) return;
+      document.getElementById('collStatus').textContent = '加载中…';
+      document.getElementById('summary').innerHTML = '';
+      document.getElementById('watchWrap').innerHTML = '';
+      document.getElementById('personsWrap').innerHTML = '';
+      await loadWatchlist();
+      try {
+        const d1 = prevDate(d, 1), d2 = prevDate(d, 2), d3 = prevDate(d, 3), d4 = prevDate(d, 4), d5 = prevDate(d, 5);
+        _effDates = [d1, d2, d3, d4, d5];
+        const [res, res1, res2, res3, res4, res5] = await Promise.all([
+          fetch('/api/vendor/collectors?date=' + d),
+          fetch('/api/vendor/collectors?date=' + d1),
+          fetch('/api/vendor/collectors?date=' + d2),
+          fetch('/api/vendor/collectors?date=' + d3),
+          fetch('/api/vendor/collectors?date=' + d4),
+          fetch('/api/vendor/collectors?date=' + d5),
+        ]);
+        if (res.status === 401) { window.location.href = '/vendor'; return; }
+        const data = await res.json();
+        _effMap1 = buildEffMap((res1.ok ? await res1.json() : {}).persons);
+        _effMap2 = buildEffMap((res2.ok ? await res2.json() : {}).persons);
+        _effMap3 = buildEffMap((res3.ok ? await res3.json() : {}).persons);
+        _effMap4 = buildEffMap((res4.ok ? await res4.json() : {}).persons);
+        _effMap5 = buildEffMap((res5.ok ? await res5.json() : {}).persons);
+        document.getElementById('collStatus').textContent = '';
+        document.getElementById('pageTitle').textContent = `供应商看板 · ${data.group}`;
+        _lastData = data.persons || [];
+        renderSummary(data);
+        rerender();
+      } catch (e) {
+        document.getElementById('collStatus').textContent = '加载失败: ' + e.message;
+      }
+    }
+
+    function rerender() {
+      renderWatch(_lastData);
+      renderPersons(_lastData);
+    }
+
+    function renderSummary(data) {
+      const activePersons = (data.persons || []).filter(p => p.collect_cases > 10);
+      const activeQcH = activePersons.reduce((s, p) => s + (p.collect_qc_h || 0), 0);
+      const avgEff = activePersons.length > 0 ? (activeQcH / activePersons.length).toFixed(2) : '0.00';
+      const items = [
+        { label: '活跃采集员', value: data.total_persons, sub: data.group, accent: true },
+        { label: '采集总时长', value: data.total_collect_h.toFixed(1) + 'h', sub: '原始视频' },
+        { label: '质检通过时长', value: data.total_qc_h.toFixed(1) + 'h', sub: '可流转数据' },
+        { label: '整体通过率', value: data.overall_qc_rate + '%', sub: '质检通过 / 采集' },
+        { label: '平均人效', value: avgEff + 'h', sub: `活跃${activePersons.length}人均值` },
+      ];
+      document.getElementById('summary').innerHTML = items.map(it =>
+        `<div class="stat">
+          <div class="stat-label">${it.label}</div>
+          <div class="stat-value${it.accent ? ' accent' : ''}">${it.value}</div>
+          <div class="stat-sub">${it.sub}</div>
+        </div>`
+      ).join('');
+    }
+
+    function renderWatch(persons) {
+      const wrap = document.getElementById('watchWrap');
+      const watched = (persons || []).filter(p => _watchSet.has(p.producer));
+      if (!watched.length) {
+        wrap.innerHTML = '';
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="watch-card">
+          <div class="watch-card-header">⭐ 我的关注（${watched.length} 人）</div>
+          <table>
+            <thead><tr>
+              <th style="width:32px"></th><th>采集员</th>
+              <th>当日采集数</th><th>当日采集时长</th><th>采集人效</th>
+              <th>今日质检产出</th><th>当日质检通过率</th>
+              <th>待质检时长</th><th>推断在线</th><th>活跃时段</th>
+            </tr></thead>
+            <tbody>
+              ${watched.map(p => watchRow(p)).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function watchRow(p) {
+      return `<tr>
+        <td style="width:32px;padding-right:0">
+          <button class="watch-btn active" onclick="toggleWatch('${p.producer.replace(/'/g,"\\'")}')">★</button>
+        </td>
+        <td style="color:#e2e8f0;font-weight:500">${p.producer}</td>
+        <td>${p.collect_cases}</td>
+        <td>${p.collect_h.toFixed(2)}h</td>
+        <td>${(p.collect_qc_h || 0).toFixed(2)}h</td>
+        <td>${p.qc_h.toFixed(2)}h</td>
+        <td>
+          <div class="rate-bar">
+            <div class="rate-track"><div class="rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+            <span>${p.qc_rate}%</span>
+          </div>
+        </td>
+        <td>${p.pending_inspect_h.toFixed(1)}h</td>
+        <td>${p.online_h.toFixed(2)}h</td>
+        <td><span class="tag-time">${p.first_seen} – ${p.last_seen}</span></td>
+      </tr>`;
+    }
+
+    function renderPersons(persons) {
+      const wrap = document.getElementById('personsWrap');
+      if (!persons.length) {
+        wrap.innerHTML = '<div class="empty">该日期暂无数据</div>';
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="persons-card">
+          <div class="persons-card-header">采集员明细（${persons.length} 人）</div>
+          <table>
+            <thead><tr>
+              <th></th>
+              <th>采集员</th>
+              <th>累计采集时长</th><th>累计质检通过时长</th><th>累计质检通过率</th>
+              <th>当日采集数</th><th>当日采集时长</th><th>采集人效</th><th>今日质检产出</th><th>当日质检通过率</th>
+              <th>待质检时长</th><th>待抽检时长</th>
+              <th>本周抽检时长</th><th>本周抽检数</th><th>本周抽检通过率</th>
+              <th>推断在线</th><th>活跃时段</th>
+            </tr></thead>
+            <tbody>
+              ${persons.map(p => personRow(p)).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function personRow(p) {
+      const isFew = p.collect_cases <= 10;
+      const isWatched = _watchSet.has(p.producer);
+      const nameSafe = p.producer.replace(/'/g, "\\'");
+      return `<tr class="${isFew ? 'few-row' : ''}">
+        <td style="width:32px;padding-right:0">
+          <button class="watch-btn${isWatched ? ' active' : ''}" onclick="toggleWatch('${nameSafe}')">${isWatched ? '★' : '☆'}</button>
+        </td>
+        <td style="color:#e2e8f0;font-weight:500">
+          ${p.producer}
+          ${p.first_collect_date ? `<span style="margin-left:6px;font-size:11px;color:#475569;font-weight:400">${p.first_collect_date}</span>` : ''}
+          ${isFew ? '<span class="tag-few">少</span>' : ''}
+        </td>
+        <td>${p.total_collect_h.toFixed(1)}h</td>
+        <td>${p.total_qc_h.toFixed(1)}h</td>
+        <td>
+          <div class="rate-bar">
+            <div class="rate-track"><div class="rate-fill" style="width:${Math.min(p.total_qc_rate,100)}%"></div></div>
+            <span>${p.total_qc_rate}%</span>
+          </div>
+        </td>
+        <td>${p.collect_cases}</td>
+        <td>${p.collect_h.toFixed(2)}h</td>
+        <td>${(p.collect_qc_h || 0).toFixed(2)}h</td>
+        <td>${p.qc_h.toFixed(2)}h</td>
+        <td>
+          <div class="rate-bar">
+            <div class="rate-track"><div class="rate-fill" style="width:${Math.min(p.qc_rate,100)}%"></div></div>
+            <span>${p.qc_rate}%</span>
+          </div>
+        </td>
+        <td>${p.pending_inspect_h.toFixed(1)}h</td>
+        <td>${p.pending_sampling_h.toFixed(1)}h</td>
+        <td>${(p.week_sampling_h || 0).toFixed(2)}h</td>
+        <td>${p.week_sampling_total || 0}</td>
+        <td>
+          <div class="rate-bar">
+            <div class="rate-track"><div class="rate-fill" style="width:${Math.min(p.week_sampling_rate||0,100)}%"></div></div>
+            <span>${p.week_sampling_rate || 0}%</span>
+          </div>
+        </td>
+        <td>${p.online_h.toFixed(2)}h</td>
+        <td><span class="tag-time">${p.first_seen} – ${p.last_seen}</span></td>
+      </tr>`;
+    }
+
+    function exportExcel() {
+      if (!_lastData || !_lastData.length) { alert('暂无数据'); return; }
+      const date = document.getElementById('collDate').value;
+      const headers = ['采集员','累计采集时长(h)','累计质检通过时长(h)','累计质检通过率(%)',
+        '当日采集数','当日采集时长(h)','采集人效(h)',
+        '今日质检产出(h)','当日质检通过率(%)',
+        '待质检时长(h)','待抽检时长(h)',
+        '本周抽检时长(h)','本周抽检数','本周抽检通过率(%)',
+        '推断在线(h)','活跃时段'];
+      const rows = _lastData.map(p => [
+        p.producer,
+        p.total_collect_h, p.total_qc_h, p.total_qc_rate,
+        p.collect_cases, p.collect_h, p.collect_qc_h || 0,
+        p.qc_h, p.qc_rate,
+        p.pending_inspect_h, p.pending_sampling_h,
+        p.week_sampling_h || 0, p.week_sampling_total || 0, p.week_sampling_rate || 0,
+        p.online_h, `${p.first_seen} – ${p.last_seen}`
+      ]);
+      const activePersons = _lastData.filter(p => p.collect_cases > 10);
+      const avgEff = activePersons.length > 0
+        ? +(activePersons.reduce((s, p) => s + (p.collect_qc_h || 0), 0) / activePersons.length).toFixed(2)
+        : 0;
+      rows.push([`平均人效（活跃${activePersons.length}人）`, '', '', '', '', '', avgEff, '', '', '', '', '', '', '', '', '', '', '']);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '采集详情');
+      XLSX.writeFile(wb, `供应商看板_${date}.xlsx`);
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
