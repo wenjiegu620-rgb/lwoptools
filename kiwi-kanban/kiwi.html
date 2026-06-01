@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Kiwi 交付看板</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a1a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px}
+.topbar{background:#0f0f2d;border-bottom:1px solid rgba(99,102,241,.3);padding:0 20px;height:48px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:15px;font-weight:600;color:#c7d2fe}
+.tbtn{padding:4px 12px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:12px;text-decoration:none;display:inline-flex;align-items:center}
+.tbtn:hover{background:#334155}
+.tbtn.primary{border-color:#6366f1;background:rgba(99,102,241,.15);color:#a5b4fc}
+.scene-tabs{display:flex;gap:4px;padding:12px 20px 0;border-bottom:1px solid rgba(99,102,241,.15);background:#0a0a1a}
+.stab{padding:6px 16px;border-radius:6px 6px 0 0;cursor:pointer;color:#64748b;font-size:13px;border:1px solid transparent;border-bottom:none;user-select:none}
+.stab:hover{color:#94a3b8}
+.stab.active{background:#13132d;border-color:rgba(99,102,241,.3);color:#a5b4fc;font-weight:500}
+.controls{display:flex;align-items:center;gap:12px;padding:10px 20px;background:#0d0d24;border-bottom:1px solid rgba(99,102,241,.1)}
+.controls select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:5px 10px;border-radius:6px;font-size:13px;cursor:pointer}
+.page-body{padding:16px 20px;display:flex;flex-direction:column;gap:16px}
+/* 总览卡片 */
+.overview-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.ov-card{background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px 16px}
+.ov-label{font-size:11px;color:#64748b;margin-bottom:6px}
+.ov-val{font-size:22px;font-weight:700;color:#e2e8f0;line-height:1}
+.ov-val.green{color:#34d399}
+.ov-val.indigo{color:#a5b4fc}
+.ov-sub{font-size:11px;color:#475569;margin-top:4px}
+/* 两列区域 */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;overflow:hidden}
+.panel-hd{padding:10px 14px;border-bottom:1px solid rgba(99,102,241,.15);font-size:13px;font-weight:600;color:#a5b4fc;display:flex;align-items:center;gap:8px}
+.panel-body{overflow-x:auto}
+/* 通用表格 */
+.ktable{width:100%;border-collapse:collapse}
+.ktable th{background:#0f0f2d;color:#64748b;font-size:11px;font-weight:500;padding:6px 10px;text-align:left;border-bottom:1px solid rgba(99,102,241,.15);white-space:nowrap}
+.ktable th.r{text-align:right}
+.ktable td{padding:6px 10px;border-bottom:1px solid rgba(99,102,241,.08);vertical-align:middle;white-space:nowrap}
+.ktable td.r{text-align:right}
+.ktable tr:last-child td{border-bottom:none}
+.ktable tr:hover td{background:rgba(99,102,241,.04)}
+/* 任务汇总 */
+.task-group-row td{background:#0d0d24;color:#818cf8;font-weight:600;font-size:12px;padding:5px 10px}
+/* 进度条 */
+.pbar-wrap{display:flex;align-items:center;gap:6px;min-width:80px}
+.pbar-bg{flex:1;height:5px;background:#1e293b;border-radius:3px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:3px;transition:width .3s}
+.pbar-txt{font-size:11px;color:#64748b;width:32px;text-align:right;flex-shrink:0}
+/* 达标标签 */
+.tag-hit{background:rgba(52,211,153,.15);color:#34d399;padding:1px 6px;border-radius:4px;font-size:10px}
+.tag-part{background:rgba(245,158,11,.12);color:#f59e0b;padding:1px 6px;border-radius:4px;font-size:10px}
+.tag-zero{background:rgba(100,116,139,.1);color:#475569;padding:1px 6px;border-radius:4px;font-size:10px}
+/* 明细矩阵折叠 */
+.matrix-toggle{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:10px;color:#94a3b8;font-size:13px;user-select:none}
+.matrix-toggle:hover{color:#e2e8f0}
+.matrix-wrap{overflow-x:auto;background:#13132d;border:1px solid rgba(99,102,241,.2);border-radius:0 0 10px 10px;border-top:none;padding:12px}
+.matrix-table{border-collapse:collapse;min-width:100%}
+.matrix-table th{background:#0f0f2d;color:#94a3b8;font-weight:500;font-size:11px;padding:5px 7px;text-align:center;border:1px solid rgba(99,102,241,.15);white-space:nowrap}
+.matrix-table th.col-task{text-align:left;min-width:170px;position:sticky;left:0;z-index:20;background:#0f0f2d}
+.matrix-table th.vendor-hd{background:#0d0d24;color:#6366f1;font-size:11px}
+.mrow-group td{background:#0d0d24;color:#818cf8;font-weight:600;font-size:12px;padding:4px 10px;border:1px solid rgba(99,102,241,.15)}
+.mrow-group td.sticky-col{position:sticky;left:0;z-index:5}
+.mrow-v td{border:1px solid rgba(99,102,241,.1);vertical-align:top}
+.mrow-v td.col-v{background:#0d0d24;color:#94a3b8;font-size:11px;padding:5px 10px;white-space:nowrap;position:sticky;left:0;z-index:5;min-width:170px}
+.mrow-v:hover td{background:rgba(99,102,241,.04)}
+.mrow-v:hover td.col-v{background:#0f0f24}
+.kcell{padding:4px 7px;min-width:88px}
+.kcell.hit{background:rgba(52,211,153,.08);border-radius:4px}
+.kcell.partial{background:rgba(245,158,11,.06);border-radius:4px}
+.sline{display:flex;align-items:center;gap:3px;line-height:1.65}
+.slabel{color:#475569;font-size:10px;width:14px;flex-shrink:0}
+.sval{font-size:11px;font-weight:500;color:#e2e8f0}
+.sval.zero{color:#2d3748}
+.sval.green{color:#34d399}
+.sval.amber{color:#f59e0b}
+.sdur{color:#64748b;font-size:10px}
+.cell-empty{color:#1e293b;text-align:center;padding:8px;font-size:14px}
+.status-msg{padding:60px;text-align:center;color:#475569;font-size:14px}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#13132d;border:1px solid rgba(99,102,241,.35);border-radius:12px;padding:24px;width:580px;max-height:80vh;overflow-y:auto}
+.modal h3{color:#c7d2fe;font-size:15px;margin-bottom:6px}
+.modal-sub{color:#64748b;font-size:12px;margin-bottom:16px}
+.mrow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.menv{color:#64748b;font-size:11px;flex:1;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.minput{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:12px;width:130px}
+.minput:focus{outline:none;border-color:#6366f1}
+.modal-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="topbar-title">Kiwi 交付看板</span>
+  <span style="font-size:11px;color:#475569" id="lastUpdate"></span>
+  <button class="tbtn" onclick="loadData()">刷新</button>
+  <button class="tbtn primary" onclick="openRoomConfig()">配置房间</button>
+  <a href="/logout" class="tbtn" style="margin-left:auto">退出登录</a>
+</div>
+<div class="scene-tabs" id="sceneTabs"></div>
+<div class="controls">
+  <span style="color:#94a3b8;font-size:12px">房间</span>
+  <select id="roomSelect" onchange="render()"></select>
+  <span id="badge1" style="background:rgba(99,102,241,.2);color:#a5b4fc;padding:2px 10px;border-radius:10px;font-size:11px"></span>
+  <span id="badge2" style="background:rgba(52,211,153,.15);color:#34d399;padding:2px 10px;border-radius:10px;font-size:11px;display:none"></span>
+</div>
+<div class="page-body" id="pageBody">
+  <div class="status-msg">加载中…</div>
+</div>
+<div class="modal-overlay" id="roomModal" style="display:none" onclick="if(event.target===this)closeRoomConfig()">
+  <div class="modal">
+    <h3>配置房间编号</h3>
+    <p class="modal-sub">为每个环境编号指定房间名称（如 Room_01），留空则显示原始编号。</p>
+    <div id="modalRows"></div>
+    <div class="modal-actions">
+      <button class="tbtn" onclick="closeRoomConfig()">取消</button>
+      <button class="tbtn primary" onclick="saveRoomConfig()">保存</button>
+    </div>
+  </div>
+</div>
+<script>
+const SCENE_ORDER=['Reception','Classroom','Supermarket','Coffee_shop','Library'];
+const TARGET=5;
+let _data=[],_rooms={},_scene='',_matrixOpen=false;
+
+async function init(){await Promise.all([loadRooms(),loadData()]);}
+
+async function loadRooms(){
+  try{_rooms=await(await fetch('/api/rooms')).json();}catch(e){_rooms={};}
+}
+
+async function loadData(){
+  document.getElementById('pageBody').innerHTML='<div class="status-msg">加载中…</div>';
+  try{
+    const r=await fetch('/api/progress');
+    if(!r.ok){window.location='/login';return;}
+    _data=await r.json();
+    document.getElementById('lastUpdate').textContent=new Date().toLocaleTimeString();
+    const scenes=SCENE_ORDER.filter(s=>_data.some(d=>d.scene_type===s));
+    if(!scenes.includes(_scene))_scene=scenes[0]||'';
+    renderSceneTabs();renderRoomSelect();render();
+  }catch(e){
+    document.getElementById('pageBody').innerHTML=`<div class="status-msg">加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderSceneTabs(){
+  const scenes=SCENE_ORDER.filter(s=>_data.some(d=>d.scene_type===s));
+  document.getElementById('sceneTabs').innerHTML=scenes.map(s=>
+    `<div class="stab ${s===_scene?'active':''}" onclick="selectScene('${s}')">${s}</div>`
+  ).join('');
+}
+function selectScene(s){_scene=s;renderSceneTabs();renderRoomSelect();render();}
+
+function renderRoomSelect(){
+  const envs=[...new Set(_data.filter(d=>d.scene_type===_scene).map(d=>d.env_num))].sort();
+  const sel=document.getElementById('roomSelect');
+  const prev=sel.value;
+  sel.innerHTML=envs.map(e=>`<option value="${e}">${_rooms[e]||e}</option>`).join('');
+  if(envs.includes(prev))sel.value=prev;
+}
+
+function fmtDur(sec){
+  if(!sec)return'';
+  return sec<60?`${Math.round(sec)}s`:`${(sec/60).toFixed(1)}m`;
+}
+function fmtCell(cnt,dur){
+  const d=fmtDur(dur);
+  return cnt+(d?` (${d})`:'');
+}
+
+function render(){
+  const env=document.getElementById('roomSelect').value;
+  if(!env){document.getElementById('pageBody').innerHTML='<div class="status-msg">暂无数据</div>';return;}
+  const rows=_data.filter(d=>d.scene_type===_scene&&d.env_num===env);
+  if(!rows.length){document.getElementById('pageBody').innerHTML='<div class="status-msg">该房间暂无采集数据</div>';return;}
+
+  // collectors
+  const cMap={};
+  rows.forEach(r=>{cMap[r.producer]=r.producer_group;});
+  const collectors=Object.entries(cMap).sort((a,b)=>a[1].localeCompare(b[1])||a[0].localeCompare(b[0]));
+  const totalCollectors=collectors.length;
+
+  // task→variant→producer→data
+  const tMap={};
+  rows.forEach(r=>{
+    if(!tMap[r.task_id])tMap[r.task_id]={};
+    if(!tMap[r.task_id][r.variant])tMap[r.task_id][r.variant]={};
+    tMap[r.task_id][r.variant][r.producer]=r;
+  });
+  const tasks=Object.keys(tMap).sort();
+  const allVariants=tasks.flatMap(t=>Object.keys(tMap[t]).map(v=>({t,v})));
+  const totalPairs=allVariants.length*totalCollectors;
+
+  // 总览统计
+  let hitPairs=0,totalCollected=0,totalCollectedDur=0,totalQC=0,totalQCDur=0;
+  rows.forEach(r=>{
+    if(r.qc_count>=TARGET)hitPairs++;
+    totalCollected+=r.collected_count;
+    totalCollectedDur+=r.collected_dur;
+    totalQC+=r.qc_count;
+    totalQCDur+=r.qc_dur;
+  });
+  const hitRate=totalPairs>0?Math.round(hitPairs/totalPairs*100):0;
+
+  document.getElementById('badge1').textContent=`${rows.length} 条记录`;
+  const b2=document.getElementById('badge2');
+  b2.style.display='';
+  b2.textContent=`${hitPairs} 格达标`;
+
+  // ── 总览卡片 ──
+  const ovHtml=`<div class="overview-cards">
+    <div class="ov-card">
+      <div class="ov-label">达标格数 / 总格数</div>
+      <div class="ov-val green">${hitPairs} <span style="font-size:14px;color:#475569">/ ${totalPairs}</span></div>
+      <div class="ov-sub">质检通过 ≥ ${TARGET} 条</div>
+    </div>
+    <div class="ov-card">
+      <div class="ov-label">达标率</div>
+      <div class="ov-val ${hitRate>=80?'green':hitRate>=50?'indigo':''}">${hitRate}%</div>
+      <div class="ov-sub">${totalCollectors} 名采集员 · ${allVariants.length} 个变体</div>
+    </div>
+    <div class="ov-card">
+      <div class="ov-label">采集总条数</div>
+      <div class="ov-val indigo">${totalCollected}</div>
+      <div class="ov-sub">时长 ${fmtDur(totalCollectedDur)}</div>
+    </div>
+    <div class="ov-card">
+      <div class="ov-label">质检通过条数</div>
+      <div class="ov-val ${totalQC>0?'green':''}">${totalQC}</div>
+      <div class="ov-sub">时长 ${fmtDur(totalQCDur)}</div>
+    </div>
+  </div>`;
+
+  // ── 任务汇总 ──
+  let taskRows='';
+  tasks.forEach(task=>{
+    const variants=Object.keys(tMap[task]).sort();
+    taskRows+=`<tr class="task-group-row"><td colspan="6">${task}</td></tr>`;
+    variants.forEach(variant=>{
+      const vData=tMap[task][variant];
+      let vCollected=0,vCollectedDur=0,vQC=0,vQCDur=0,vHit=0;
+      collectors.forEach(([name])=>{
+        const d=vData[name];
+        if(d){
+          vCollected+=d.collected_count;vCollectedDur+=d.collected_dur;
+          vQC+=d.qc_count;vQCDur+=d.qc_dur;
+          if(d.qc_count>=TARGET)vHit++;
+        }
+      });
+      const pct=totalCollectors>0?Math.round(vHit/totalCollectors*100):0;
+      const barColor=pct>=100?'#34d399':pct>=50?'#f59e0b':'#6366f1';
+      const tag=vHit===totalCollectors?'<span class="tag-hit">全达标</span>':vHit>0?`<span class="tag-part">${vHit}/${totalCollectors}</span>`:`<span class="tag-zero">0/${totalCollectors}</span>`;
+      taskRows+=`<tr>
+        <td style="padding-left:20px;color:#94a3b8">${variant}</td>
+        <td class="r">${fmtCell(vCollected,vCollectedDur)}</td>
+        <td class="r">${fmtCell(vQC,vQCDur)}</td>
+        <td>${tag}</td>
+        <td style="min-width:100px">
+          <div class="pbar-wrap">
+            <div class="pbar-bg"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+            <span class="pbar-txt">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    });
+  });
+  const taskPanel=`<div class="panel">
+    <div class="panel-hd">任务汇总</div>
+    <div class="panel-body">
+      <table class="ktable">
+        <thead><tr>
+          <th>变体</th>
+          <th class="r">采集(条/时长)</th>
+          <th class="r">质检通过(条/时长)</th>
+          <th>达标人数</th>
+          <th>进度</th>
+        </tr></thead>
+        <tbody>${taskRows}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  // ── 采集员汇总 ──
+  let collRows='';
+  collectors.forEach(([name,group])=>{
+    const myRows=rows.filter(r=>r.producer===name);
+    let myColl=0,myCollDur=0,myQC=0,myQCDur=0,myHit=0;
+    myRows.forEach(r=>{
+      myColl+=r.collected_count;myCollDur+=r.collected_dur;
+      myQC+=r.qc_count;myQCDur+=r.qc_dur;
+      if(r.qc_count>=TARGET)myHit++;
+    });
+    const totalV=allVariants.length;
+    const rate=totalV>0?Math.round(myHit/totalV*100):0;
+    const rateColor=rate>=80?'#34d399':rate>=50?'#f59e0b':'#94a3b8';
+    collRows+=`<tr>
+      <td style="color:#e2e8f0;font-weight:500">${name}</td>
+      <td style="color:#64748b;font-size:11px">${group}</td>
+      <td class="r">${myHit} / ${totalV}</td>
+      <td class="r">${fmtCell(myColl,myCollDur)}</td>
+      <td class="r">${fmtCell(myQC,myQCDur)}</td>
+      <td class="r" style="color:${rateColor};font-weight:600">${rate}%</td>
+    </tr>`;
+  });
+  const collPanel=`<div class="panel">
+    <div class="panel-hd">采集员汇总</div>
+    <div class="panel-body">
+      <table class="ktable">
+        <thead><tr>
+          <th>采集员</th><th>供应商</th>
+          <th class="r">达标变体</th>
+          <th class="r">采集(条/时长)</th>
+          <th class="r">质检通过(条/时长)</th>
+          <th class="r">达标率</th>
+        </tr></thead>
+        <tbody>${collRows}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  // ── 明细矩阵 ──
+  const vendors=[...new Set(collectors.map(c=>c[1]))];
+  const vendorCols=vendors.map(v=>({v,cols:collectors.filter(c=>c[1]===v)}));
+  let matrixHtml=`<table class="matrix-table"><thead>
+    <tr>
+      <th class="col-task" rowspan="2">任务 / 变体</th>
+      ${vendorCols.map(vc=>`<th class="vendor-hd" colspan="${vc.cols.length}">${vc.v}</th>`).join('')}
+    </tr>
+    <tr>${collectors.map(([n])=>`<th title="${n}">${n.length>9?n.slice(0,9)+'…':n}</th>`).join('')}</tr>
+  </thead><tbody>`;
+  tasks.forEach(task=>{
+    const variants=Object.keys(tMap[task]).sort();
+    matrixHtml+=`<tr class="mrow-group"><td class="sticky-col" colspan="${collectors.length+1}">${task}</td></tr>`;
+    variants.forEach(variant=>{
+      matrixHtml+=`<tr class="mrow-v"><td class="col-v">${variant}</td>
+        ${collectors.map(([name])=>{
+          const d=tMap[task][variant][name];
+          if(!d)return`<td><div class="cell-empty">·</div></td>`;
+          const cls=d.qc_count>=TARGET?'hit':d.qc_count>0?'partial':'';
+          const qcColor=d.qc_count>=TARGET?'green':d.qc_count>0?'amber':'zero';
+          const line=(lbl,cnt,dur)=>{
+            const ds=fmtDur(dur);
+            return`<div class="sline"><span class="slabel">${lbl}</span><span class="sval ${cnt===0?'zero':lbl==='检'?qcColor:''}">${cnt}</span>${ds?`<span class="sdur">(${ds})</span>`:''}</div>`;
+          };
+          return`<td><div class="kcell ${cls}">${line('采',d.collected_count,d.collected_dur)}${line('检',d.qc_count,d.qc_dur)}${line('标',d.labeled_count,d.labeled_dur)}${line('包',d.packaged_count,d.packaged_dur)}</div></td>`;
+        }).join('')}
+      </tr>`;
+    });
+  });
+  matrixHtml+='</tbody></table>';
+
+  const matrixSection=`
+    <div class="matrix-toggle" onclick="toggleMatrix(this)" style="border-radius:${_matrixOpen?'10px 10px 0 0':'10px'}">
+      <span id="matrixArrow">${_matrixOpen?'▼':'▶'}</span>
+      <span>明细矩阵</span>
+      <span style="font-size:11px;color:#475569;margin-left:4px">${tasks.length} 个任务 · ${allVariants.length} 个变体 · ${totalCollectors} 名采集员</span>
+    </div>
+    <div id="matrixWrap" class="matrix-wrap" style="display:${_matrixOpen?'block':'none'}">${matrixHtml}</div>`;
+
+  document.getElementById('pageBody').innerHTML=ovHtml+`<div class="two-col">${taskPanel}${collPanel}</div>`+matrixSection;
+}
+
+function toggleMatrix(el){
+  _matrixOpen=!_matrixOpen;
+  document.getElementById('matrixWrap').style.display=_matrixOpen?'block':'none';
+  document.getElementById('matrixArrow').textContent=_matrixOpen?'▼':'▶';
+  el.style.borderRadius=_matrixOpen?'10px 10px 0 0':'10px';
+}
+
+function openRoomConfig(){
+  const envs=[...new Set(_data.filter(d=>d.scene_type===_scene).map(d=>d.env_num))].sort();
+  document.getElementById('modalRows').innerHTML=envs.map(e=>`
+    <div class="mrow">
+      <span class="menv" title="${e}">${e}</span>
+      <input class="minput" data-env="${e}" placeholder="Room_01" value="${_rooms[e]||''}">
+    </div>`).join('');
+  document.getElementById('roomModal').style.display='flex';
+}
+function closeRoomConfig(){document.getElementById('roomModal').style.display='none';}
+async function saveRoomConfig(){
+  document.querySelectorAll('#modalRows input').forEach(inp=>{
+    const v=inp.value.trim();
+    if(v)_rooms[inp.dataset.env]=v;else delete _rooms[inp.dataset.env];
+  });
+  await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_rooms)});
+  closeRoomConfig();renderRoomSelect();render();
+}
+
+init();
+</script>
+</body>
+</html>

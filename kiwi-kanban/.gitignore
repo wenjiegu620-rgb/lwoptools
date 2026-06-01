@@ -1,0 +1,4 @@
+kiwi_rooms.json
+.env
+__pycache__/
+*.log
